@@ -32,6 +32,23 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
                 curve.modifiers.new(type = 'CYCLES')
         return {'FINISHED'}
 
+class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
+    """Removes cycle modifier from all available f-curve channels"""
+    bl_idname = 'graph.adh_fcurve_remove_cycle_modifier'
+    bl_label = 'Remove Cycle Modifier'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.mode == 'POSE' and context.active_object != None
+
+    def execute(self, context):
+        for curve in context.active_object.animation_data.action.fcurves:
+            for m in curve.modifiers:
+                if m.type == 'CYCLES':
+                    curve.modifiers.remove(m)
+        return {'FINISHED'}
+
 class ADH_RiggingToolsFCurvePanel(bpy.types.Panel):
     bl_label = 'ADH Animation Tools'
     bl_space_type = 'GRAPH_EDITOR'
@@ -43,7 +60,10 @@ class ADH_RiggingToolsFCurvePanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator('graph.adh_fcurve_add_cycle_modifier', icon="FCURVE")
+
+        row = layout.row(align=True)
+        row.operator('graph.adh_fcurve_add_cycle_modifier', icon="FCURVE")
+        row.operator('graph.adh_fcurve_remove_cycle_modifier', icon="CANCEL", text='')
 
 def register():
     bpy.utils.register_module(__name__)
