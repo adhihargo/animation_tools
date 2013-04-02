@@ -23,13 +23,18 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
 
     @classmethod
     def poll(self, context):
-        return context.mode == 'POSE' and context.active_object != None
+        return context.active_object != None
 
     def execute(self, context):
         for curve in context.active_object.animation_data.action.fcurves:
-            is_cycles_exist = [m.type == 'CYCLES' for m in curve.modifiers]
-            if not True in is_cycles_exist:
-                curve.modifiers.new(type = 'CYCLES')
+            cm = None
+            for m in curve.modifiers:
+                if m.type == 'CYCLES':
+                    cm = m
+                    break
+            if not cm:
+                cm = curve.modifiers.new(type = 'CYCLES')
+            cm.mode_before = cm.mode_after = 'REPEAT_OFFSET'
         return {'FINISHED'}
 
 class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
@@ -40,7 +45,7 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
 
     @classmethod
     def poll(self, context):
-        return context.mode == 'POSE' and context.active_object != None
+        return context.active_object != None
 
     def execute(self, context):
         for curve in context.active_object.animation_data.action.fcurves:
@@ -73,4 +78,3 @@ def unregister():
 
 if __name__ == "__main__":
     register()
-    
