@@ -23,7 +23,8 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
 
     @classmethod
     def poll(self, context):
-        return context.active_object != None
+        return context.active_object != None\
+            and context.active_object.animation_data != None
 
     def execute(self, context):
         for curve in context.active_object.animation_data.action.fcurves:
@@ -45,7 +46,8 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
 
     @classmethod
     def poll(self, context):
-        return context.active_object != None
+        return context.active_object != None\
+            and context.active_object.animation_data != None
 
     def execute(self, context):
         for curve in context.active_object.animation_data.action.fcurves:
@@ -61,7 +63,8 @@ class ADH_RiggingToolsFCurvePanel(bpy.types.Panel):
 
     @classmethod
     def poll(self, context):
-        return True
+        return context.active_object != None\
+            and context.active_object.animation_data != None
 
     def draw(self, context):
         layout = self.layout
