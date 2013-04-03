@@ -56,7 +56,7 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
                     curve.modifiers.remove(m)
         return {'FINISHED'}
 
-class ADH_RiggingToolsFCurvePanel(bpy.types.Panel):
+class ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
     bl_label = 'ADH Animation Tools'
     bl_space_type = 'GRAPH_EDITOR'
     bl_region_type = 'UI'
@@ -70,8 +70,25 @@ class ADH_RiggingToolsFCurvePanel(bpy.types.Panel):
         layout = self.layout
 
         row = layout.row(align=True)
-        row.operator('graph.adh_fcurve_add_cycle_modifier', icon="FCURVE")
+        row.operator('graph.adh_fcurve_add_cycle_modifier')
         row.operator('graph.adh_fcurve_remove_cycle_modifier', icon="CANCEL", text='')
+
+class ADH_AnimationToolsView3DPanel(bpy.types.Panel):
+    bl_label = 'ADH Animation Tools'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+
+    @classmethod
+    def poll(self, context):
+        return True
+
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row(align=True)
+        row.prop(context.scene.tool_settings, "use_keyframe_insert_auto", text='')
+        row.prop_search(context.scene.keying_sets_all, "active",
+                        context.scene, "keying_sets_all", text='')
 
 def register():
     bpy.utils.register_module(__name__)
