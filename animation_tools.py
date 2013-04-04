@@ -2,6 +2,7 @@
 # License: GPL v2
 
 import bpy
+from mathutils import Vector
 
 bl_info = {
     "name": "ADH Animation Tools",
@@ -14,6 +15,104 @@ bl_info = {
     "wiki_url": "",
     "tracker_url": "",
     "category": "Animation"}
+
+def bake_action(obj, frame_start, frame_end, only_selected, action=None):
+    action = obj.animation_data.action
+    for fcurve in action.fcurves:
+        if len(fcurve.modifiers) == 1 and fcurve.modifiers[0].type == 'CYCLES':
+            cm = fcurve.modifiers[0]
+            key_min = min(fcurve.keyframe_points, key=lambda x: x.co.x)
+            key_max = max(fcurve.keyframe_points, key=lambda x: x.co.x)
+            key_delta = key_max.co - key_min.co
+            key_delta.x += 1
+            key_delta.y = 0
+
+            for key in fcurve.keyframe_points:
+                # Extend before original cycle
+                count = 0
+                while True:
+                    count -= 1
+                    key_offset = count * key_delta
+                    print(key_offset)
+
+                    key_new = fcurve.keyframe_points.insert(0, 0)
+                    key_new.co = key.co + key_offset
+                    key_new.handle_left = key.handle_left + key_offset
+                    key_new.handle_right = key.handle_right + key_offset
+
+                    if (key_new.co + key_offset).x < frame_start:
+                        break
+
+                # Extend after original cycle
+                count = 0
+                while True:
+                    count += 1
+                    key_offset = count * key_delta
+                    print(key_offset)
+
+                    key_new = fcurve.keyframe_points.insert(0, 0)
+                    key_new.co = key.co + key_offset
+                    key_new.handle_left = key.handle_left + key_offset
+                    key_new.handle_right = key.handle_right + key_offset
+
+                    if (key_max.co + key_offset).x > frame_end:
+                        break
+
+            fcurve.modifiers.remove(cm)
+
+    return action
+
+# Uses bpy.ops.nla.bake as starting point.
+class ADH_FCurveBakeAction(bpy.types.Operator):
+    """Bake object/pose loc/scale/rotation animation to a new action"""
+    bl_idname = 'graph.adh_fcurve_bake_action'
+    bl_label = 'Bake Action'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    frame_start = bpy.props.IntProperty(
+        name="Start Frame",
+        description="Start frame for baking",
+        min=0, max=300000,
+        default=1,
+        )
+
+    frame_end = bpy.props.IntProperty(
+        name="End Frame",
+        description="End frame for baking",
+        min=1, max=300000,
+        default=250,
+        )
+
+    only_selected = bpy.props.BoolProperty(
+        name="Only Selected",
+        description="Only key selected object/bones",
+        default=False,
+        )
+
+    @classmethod
+    def poll(self, context):
+        return context.active_object != None\
+            and context.active_object.animation_data != None
+
+    def execute(self, context):
+        action = bake_action(context.active_object,
+                             self.frame_start,
+                             self.frame_end,
+                             only_selected=False)
+
+        if action is None:
+            self.report({'INFO'}, "Nothing to bake")
+            return {'CANCELLED'}
+
+        context.area.tag_redraw()
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.frame_start = context.scene.frame_start
+        self.frame_end = context.scene.frame_end
+    
+        return context.window_manager.invoke_props_dialog(self)
 
 class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
     """Add cycle modifier to all available f-curve channels"""
@@ -21,10 +120,46 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
     bl_label = 'Add Cycle Modifier'
     bl_options = {'REGISTER', 'UNDO'}
 
+    cycles_before = bpy.props.IntProperty(
+        name = 'Cycles Before')
+
+    cycles_after = bpy.props.IntProperty(
+        name = 'Cycles After')
+
+    mode_before = bpy.props.EnumProperty(
+        name = 'Mode Before',
+        items = [('NONE', 'No Cycles', ''),
+                 ('REPEAT', 'Repeat Motion', ''),
+                 ('REPEAT_OFFSET', 'Repeat with Offset', ''),
+                 ('MIRROR', 'Repeat Mirrored', ''),
+                 ],
+        default = 'REPEAT_OFFSET')
+
+    mode_after = bpy.props.EnumProperty(
+        name = 'Mode After',
+        items = [('NONE', 'No Cycles', ''),
+                 ('REPEAT', 'Repeat Motion', ''),
+                 ('REPEAT_OFFSET', 'Repeat with Offset', ''),
+                 ('MIRROR', 'Repeat Mirrored', ''),
+                 ],
+        default = 'REPEAT_OFFSET')
+
     @classmethod
     def poll(self, context):
         return context.active_object != None\
             and context.active_object.animation_data != None
+
+    def draw(self, context):
+        layout = self.layout
+        row = layout.row()
+
+        col = row.column(align=True)
+        col.prop(self, 'mode_before', text='')
+        col.prop(self, 'cycles_before')
+
+        col = row.column(align=True)
+        col.prop(self, 'mode_after', text='')
+        col.prop(self, 'cycles_after')
 
     def execute(self, context):
         for curve in context.active_object.animation_data.action.fcurves:
@@ -35,8 +170,14 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
                     break
             if not cm:
                 cm = curve.modifiers.new(type = 'CYCLES')
-            cm.mode_before = cm.mode_after = 'REPEAT_OFFSET'
+            cm.mode_before = self.mode_before
+            cm.mode_after = self.mode_after
+            cm.cycles_before = self.cycles_before
+            cm.cycles_after = self.cycles_after
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
 
 class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     """Removes cycle modifier from all available f-curve channels"""
@@ -72,6 +213,9 @@ class ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
         row = layout.row(align=True)
         row.operator('graph.adh_fcurve_add_cycle_modifier')
         row.operator('graph.adh_fcurve_remove_cycle_modifier', icon="CANCEL", text='')
+
+        row = layout.row(align=True)
+        row.operator('graph.adh_fcurve_bake_action')
 
 class ADH_AnimationToolsView3DPanel(bpy.types.Panel):
     bl_label = 'ADH Animation Tools'
