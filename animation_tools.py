@@ -22,47 +22,59 @@ def bake_action(obj, frame_start, frame_end, only_selected, action=None):
         print(fcurve.data_path)
         if len(fcurve.modifiers) == 1 and fcurve.modifiers[0].type == 'CYCLES':
             cm = fcurve.modifiers[0]
+
             key_min = min(fcurve.keyframe_points, key=lambda x: x.co.x)
             key_max = max(fcurve.keyframe_points, key=lambda x: x.co.x)
             key_delta = key_max.co - key_min.co
             key_delta.x += 1
-            key_delta.y = 0
+
+            # These always return False if cycle count is set to 0
+            # (which means infinite cycle).
+            check_cycles_before = \
+                lambda c: False if cm.cycles_before == 0 else\
+                lambda c: c > cm.cycles_before
+            check_cycles_after = \
+                lambda c: False if cm.cycles_after == 0 else\
+                lambda c: c > cm.cycles_after
 
             for key in fcurve.keyframe_points:
-                print('Mundur')
                 # Extend before original cycle
                 count = 0
-                while True:
-                    count -= 1
-                    key_offset = count * key_delta
-                    print(key_offset)
-
-                    key_new = fcurve.keyframe_points.insert(key.co.x+key_offset.x,
-                                                            key.co.y+key_offset.y)
-                    key_new.handle_left = key.handle_left + key_offset
-                    key_new.handle_right = key.handle_right + key_offset
-
-                    if (key_new.co + key_offset).x < frame_start:
-                        break
-                    print(key_new.co)
-
-                print('Maju')
-                # Extend after original cycle
-                count = 0
+                key_delta_before = key_delta
+                if cm.mode_before != 'REPEAT_OFFSET':
+                    key_delta_before.y = 0
                 while True:
                     count += 1
-                    key_offset = count * key_delta
-                    print(key_offset)
 
+                    key_offset = -(count * key_delta_before)
                     key_new = fcurve.keyframe_points.insert(key.co.x+key_offset.x,
                                                             key.co.y+key_offset.y)
-                    key_new.co = key.co + key_offset
                     key_new.handle_left = key.handle_left + key_offset
                     key_new.handle_right = key.handle_right + key_offset
 
-                    if (key_new.co + key_offset).x > frame_end:
+                    if check_cycles_before(count):
                         break
-                    print(key_new.co)
+                    if (key.co.x+key_offset.x) <= frame_start:
+                        break
+
+                # Extend after original cycle
+                count = 0
+                key_delta_after = key_delta
+                if cm.mode_after != 'REPEAT_OFFSET':
+                    key_delta_after.y = 0
+                while True:
+                    count += 1
+
+                    key_offset = count * key_delta_after
+                    key_new = fcurve.keyframe_points.insert(key.co.x+key_offset.x,
+                                                            key.co.y+key_offset.y)
+                    key_new.handle_left = key.handle_left + key_offset
+                    key_new.handle_right = key.handle_right + key_offset
+
+                    if check_cycles_after(count):
+                        break
+                    if (key.co.x+key_offset.x) >= frame_end:
+                        break
 
             fcurve.modifiers.remove(cm)
 
@@ -111,7 +123,6 @@ class ADH_FCurveBakeAction(bpy.types.Operator):
             return {'CANCELLED'}
 
         context.area.tag_redraw()
-
         return {'FINISHED'}
 
     def invoke(self, context, event):
@@ -180,6 +191,8 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
             cm.mode_after = self.mode_after
             cm.cycles_before = self.cycles_before
             cm.cycles_after = self.cycles_after
+
+        context.area.tag_redraw()
         return {'FINISHED'}
 
     def invoke(self, context, event):
@@ -201,6 +214,8 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
             for m in curve.modifiers:
                 if m.type == 'CYCLES':
                     curve.modifiers.remove(m)
+
+        context.area.tag_redraw()
         return {'FINISHED'}
 
 class ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
