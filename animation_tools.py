@@ -19,6 +19,7 @@ bl_info = {
 def bake_action(obj, frame_start, frame_end, only_selected, action=None):
     action = obj.animation_data.action
     for fcurve in action.fcurves:
+        print(fcurve.data_path)
         if len(fcurve.modifiers) == 1 and fcurve.modifiers[0].type == 'CYCLES':
             cm = fcurve.modifiers[0]
             key_min = min(fcurve.keyframe_points, key=lambda x: x.co.x)
@@ -28,6 +29,7 @@ def bake_action(obj, frame_start, frame_end, only_selected, action=None):
             key_delta.y = 0
 
             for key in fcurve.keyframe_points:
+                print('Mundur')
                 # Extend before original cycle
                 count = 0
                 while True:
@@ -35,14 +37,16 @@ def bake_action(obj, frame_start, frame_end, only_selected, action=None):
                     key_offset = count * key_delta
                     print(key_offset)
 
-                    key_new = fcurve.keyframe_points.insert(0, 0)
-                    key_new.co = key.co + key_offset
+                    key_new = fcurve.keyframe_points.insert(key.co.x+key_offset.x,
+                                                            key.co.y+key_offset.y)
                     key_new.handle_left = key.handle_left + key_offset
                     key_new.handle_right = key.handle_right + key_offset
 
                     if (key_new.co + key_offset).x < frame_start:
                         break
+                    print(key_new.co)
 
+                print('Maju')
                 # Extend after original cycle
                 count = 0
                 while True:
@@ -50,13 +54,15 @@ def bake_action(obj, frame_start, frame_end, only_selected, action=None):
                     key_offset = count * key_delta
                     print(key_offset)
 
-                    key_new = fcurve.keyframe_points.insert(0, 0)
+                    key_new = fcurve.keyframe_points.insert(key.co.x+key_offset.x,
+                                                            key.co.y+key_offset.y)
                     key_new.co = key.co + key_offset
                     key_new.handle_left = key.handle_left + key_offset
                     key_new.handle_right = key.handle_right + key_offset
 
-                    if (key_max.co + key_offset).x > frame_end:
+                    if (key_new.co + key_offset).x > frame_end:
                         break
+                    print(key_new.co)
 
             fcurve.modifiers.remove(cm)
 
