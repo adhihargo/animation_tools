@@ -192,6 +192,12 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
         default=True,
         )
 
+    only_visible = bpy.props.BoolProperty(
+        name="Only Selected",
+        description="Only key visible f-curve channels",
+        default=False,
+        )
+
     @classmethod
     def poll(self, context):
         return context.active_object != None\
@@ -211,6 +217,7 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
 
         row = layout.row()
         row.prop(self, 'only_selected')
+        row.prop(self, 'only_visible')
 
     def execute(self, context):
         obj = context.active_object
@@ -219,9 +226,10 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
             else []
 
         for fcurve in obj.animation_data.action.fcurves:
-            if self.only_selected and\
-                    not True in map(lambda bone: bone.name in fcurve.data_path,\
-                                        bones):
+            if (self.only_visible and fcurve.hide) or\
+                    (self.only_selected and\
+                         not True in map(lambda bone: bone.name in fcurve.data_path,\
+                                             bones)):
                 continue
 
             cm = None
@@ -254,6 +262,12 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
         default=True,
         )
 
+    only_visible = bpy.props.BoolProperty(
+        name="Only Selected",
+        description="Only key visible f-curve channels",
+        default=False,
+        )
+
     @classmethod
     def poll(self, context):
         return context.active_object != None\
@@ -264,6 +278,7 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
 
         row = layout.row()
         row.prop(self, "only_selected")
+        row.prop(self, "only_visible")
 
     def execute(self, context):
         obj = context.active_object
@@ -272,9 +287,10 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
             else []
 
         for fcurve in obj.animation_data.action.fcurves:
-            if self.only_selected and\
-                    not True in map(lambda bone: bone.name in fcurve.data_path,\
-                                        bones):
+            if (self.only_visible and fcurve.hide) or\
+                    (self.only_selected and\
+                         not True in map(lambda bone: bone.name in fcurve.data_path,\
+                                             bones)):
                 continue            
 
             for m in fcurve.modifiers:
