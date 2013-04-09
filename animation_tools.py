@@ -16,12 +16,14 @@ bl_info = {
     "tracker_url": "",
     "category": "Animation"}
 
-def bake_action(obj, frame_start, frame_end, only_selected):
+def bake_action(obj, frame_start, frame_end, only_selected, only_visible):
     action = obj.animation_data.action
 
     bones = [b for b in obj.data.bones if b.select] if only_selected else []
 
     for fcurve in action.fcurves:
+        if only_visible and fcurve.hide:
+            continue
         if only_selected and\
                 not True in map(lambda bone: bone.name in fcurve.data_path, bones):
             continue
@@ -123,6 +125,12 @@ class ADH_FCurveBakeAction(bpy.types.Operator):
         default=True,
         )
 
+    only_visible = bpy.props.BoolProperty(
+        name="Only Visible",
+        description="Only key visible f-curve channels",
+        default=False,
+        )
+
     @classmethod
     def poll(self, context):
         return context.active_object != None\
@@ -135,7 +143,8 @@ class ADH_FCurveBakeAction(bpy.types.Operator):
                              self.frame_end,
                              only_selected=self.only_selected\
                                  if obj.type == 'ARMATURE'\
-                                 else False)
+                                 else False,
+                             only_visible=self.only_visible)
 
         if action is None:
             self.report({'INFO'}, "Nothing to bake")
