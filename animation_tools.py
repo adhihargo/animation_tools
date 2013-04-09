@@ -16,15 +16,23 @@ bl_info = {
     "tracker_url": "",
     "category": "Animation"}
 
-def bake_action(obj, frame_start, frame_end, only_selected, action=None):
+def bake_action(obj, frame_start, frame_end, only_selected):
     action = obj.animation_data.action
+
+    bones = [b for b in obj.data.bones if b.select] if only_selected else []
+
     for fcurve in action.fcurves:
-        print(fcurve.data_path)
+        if only_selected and\
+                not True in map(lambda bone: bone.name in fcurve.data_path, bones):
+            continue
+
         if len(fcurve.modifiers) == 1 and fcurve.modifiers[0].type == 'CYCLES':
             cm = fcurve.modifiers[0]
 
             key_min = min(fcurve.keyframe_points, key=lambda x: x.co.x)
             key_max = max(fcurve.keyframe_points, key=lambda x: x.co.x)
+            key_min.handle_right_type = key_max.handle_left_type = 'FREE'
+            key_min.handle_left_type = key_max.handle_right_type = 'VECTOR'
             key_delta = key_max.co - key_min.co
             key_delta.x += 1
 
@@ -49,12 +57,16 @@ def bake_action(obj, frame_start, frame_end, only_selected, action=None):
                     key_offset = -(count * key_delta_before)
                     key_new = fcurve.keyframe_points.insert(key.co.x+key_offset.x,
                                                             key.co.y+key_offset.y)
+                    key_new.handle_left_type = key.handle_left_type
+                    key_new.handle_right_type = key.handle_right_type
                     key_new.handle_left = key.handle_left + key_offset
                     key_new.handle_right = key.handle_right + key_offset
+                    if not fcurve.hide:
+                        print("%s, %s, %s" %
+                              (str(key_new.co), key_new.handle_left, key_new.handle_right))
 
-                    if check_cycles_before(count):
-                        break
-                    if (key.co.x+key_offset.x) <= frame_start:
+                    if check_cycles_before(count) or\
+                            (key.co.x+key_offset.x) <= frame_start:
                         break
 
                 # Extend after original cycle
@@ -68,18 +80,28 @@ def bake_action(obj, frame_start, frame_end, only_selected, action=None):
                     key_offset = count * key_delta_after
                     key_new = fcurve.keyframe_points.insert(key.co.x+key_offset.x,
                                                             key.co.y+key_offset.y)
+                    key_new.handle_left_type = key.handle_left_type
+                    key_new.handle_right_type = key.handle_right_type
                     key_new.handle_left = key.handle_left + key_offset
                     key_new.handle_right = key.handle_right + key_offset
+                    if not fcurve.hide:
+                        print("%s, %s, %s" %
+                              (str(key_new.co), key_new.handle_left, key_new.handle_right))
 
-                    if check_cycles_after(count):
-                        break
-                    if (key.co.x+key_offset.x) >= frame_end:
+                    if check_cycles_after(count) or\
+                            (key.co.x+key_offset.x) >= frame_end:
                         break
 
             fcurve.modifiers.remove(cm)
+        else:
+            continue
 
     return action
 
+# ======================================================================
+# ============================== Operators =============================
+# ======================================================================
+
 # Uses bpy.ops.nla.bake as starting point.
 class ADH_FCurveBakeAction(bpy.types.Operator):
     """Bake object/pose loc/scale/rotation animation to a new action"""
@@ -103,20 +125,23 @@ class ADH_FCurveBakeAction(bpy.types.Operator):
 
     only_selected = bpy.props.BoolProperty(
         name="Only Selected",
-        description="Only key selected object/bones",
-        default=False,
+        description="Only key selected bones",
+        default=True,
         )
 
     @classmethod
     def poll(self, context):
         return context.active_object != None\
             and context.active_object.animation_data != None
-
+
     def execute(self, context):
-        action = bake_action(context.active_object,
+        obj = context.active_object
+        action = bake_action(obj,
                              self.frame_start,
                              self.frame_end,
-                             only_selected=False)
+                             only_selected=self.only_selected\
+                                 if obj.type == 'ARMATURE'\
+                                 else False)
 
         if action is None:
             self.report({'INFO'}, "Nothing to bake")
@@ -161,6 +186,12 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
                  ],
         default = 'REPEAT_OFFSET')
 
+    only_selected = bpy.props.BoolProperty(
+        name="Only Selected",
+        description="Only key selected bones",
+        default=True,
+        )
+
     @classmethod
     def poll(self, context):
         return context.active_object != None\
@@ -178,15 +209,28 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
         col.prop(self, 'mode_after', text='')
         col.prop(self, 'cycles_after')
 
+        row = layout.row()
+        row.prop(self, 'only_selected')
+
     def execute(self, context):
-        for curve in context.active_object.animation_data.action.fcurves:
+        obj = context.active_object
+        bones = [b for b in obj.data.bones if b.select]\
+            if obj.type == 'ARMATURE' and self.only_selected \
+            else []
+
+        for fcurve in obj.animation_data.action.fcurves:
+            if self.only_selected and\
+                    not True in map(lambda bone: bone.name in fcurve.data_path,\
+                                        bones):
+                continue
+
             cm = None
-            for m in curve.modifiers:
+            for m in fcurve.modifiers:
                 if m.type == 'CYCLES':
                     cm = m
                     break
             if not cm:
-                cm = curve.modifiers.new(type = 'CYCLES')
+                cm = fcurve.modifiers.new(type = 'CYCLES')
             cm.mode_before = self.mode_before
             cm.mode_after = self.mode_after
             cm.cycles_before = self.cycles_before
@@ -204,20 +248,49 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     bl_label = 'Remove Cycle Modifier'
     bl_options = {'REGISTER', 'UNDO'}
 
+    only_selected = bpy.props.BoolProperty(
+        name="Only Selected",
+        description="Only key selected bones",
+        default=True,
+        )
+
     @classmethod
     def poll(self, context):
         return context.active_object != None\
             and context.active_object.animation_data != None
 
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row()
+        row.prop(self, "only_selected")
+
     def execute(self, context):
-        for curve in context.active_object.animation_data.action.fcurves:
-            for m in curve.modifiers:
+        obj = context.active_object
+        bones = [b for b in obj.data.bones if b.select]\
+            if obj.type == 'ARMATURE' and self.only_selected \
+            else []
+
+        for fcurve in obj.animation_data.action.fcurves:
+            if self.only_selected and\
+                    not True in map(lambda bone: bone.name in fcurve.data_path,\
+                                        bones):
+                continue            
+
+            for m in fcurve.modifiers:
                 if m.type == 'CYCLES':
-                    curve.modifiers.remove(m)
+                    fcurve.modifiers.remove(m)
 
         context.area.tag_redraw()
         return {'FINISHED'}
 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+# ======================================================================
+# =========================== User Interface ===========================
+# ======================================================================
+
 class ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
     bl_label = 'ADH Animation Tools'
     bl_space_type = 'GRAPH_EDITOR'
