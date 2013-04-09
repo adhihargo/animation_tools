@@ -61,9 +61,6 @@ def bake_action(obj, frame_start, frame_end, only_selected):
                     key_new.handle_right_type = key.handle_right_type
                     key_new.handle_left = key.handle_left + key_offset
                     key_new.handle_right = key.handle_right + key_offset
-                    if not fcurve.hide:
-                        print("%s, %s, %s" %
-                              (str(key_new.co), key_new.handle_left, key_new.handle_right))
 
                     if check_cycles_before(count) or\
                             (key.co.x+key_offset.x) <= frame_start:
@@ -84,9 +81,6 @@ def bake_action(obj, frame_start, frame_end, only_selected):
                     key_new.handle_right_type = key.handle_right_type
                     key_new.handle_left = key.handle_left + key_offset
                     key_new.handle_right = key.handle_right + key_offset
-                    if not fcurve.hide:
-                        print("%s, %s, %s" %
-                              (str(key_new.co), key_new.handle_left, key_new.handle_right))
 
                     if check_cycles_after(count) or\
                             (key.co.x+key_offset.x) >= frame_end:
@@ -193,7 +187,7 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
         )
 
     only_visible = bpy.props.BoolProperty(
-        name="Only Selected",
+        name="Only Visible",
         description="Only key visible f-curve channels",
         default=False,
         )
@@ -226,10 +220,12 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
             else []
 
         for fcurve in obj.animation_data.action.fcurves:
-            if (self.only_visible and fcurve.hide) or\
-                    (self.only_selected and\
-                         not True in map(lambda bone: bone.name in fcurve.data_path,\
-                                             bones)):
+            if self.only_visible and fcurve.hide:
+                continue
+            if self.only_selected and\
+                    obj.type == 'ARMATURE' and\
+                    not True in map(lambda bone: bone.name in fcurve.data_path,\
+                                        bones):
                 continue
 
             cm = None
@@ -263,7 +259,7 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
         )
 
     only_visible = bpy.props.BoolProperty(
-        name="Only Selected",
+        name="Only Visible",
         description="Only key visible f-curve channels",
         default=False,
         )
@@ -287,10 +283,12 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
             else []
 
         for fcurve in obj.animation_data.action.fcurves:
-            if (self.only_visible and fcurve.hide) or\
-                    (self.only_selected and\
-                         not True in map(lambda bone: bone.name in fcurve.data_path,\
-                                             bones)):
+            if self.only_visible and fcurve.hide:
+                continue
+            if self.only_selected and\
+                    obj.type == 'ARMATURE' and\
+                    not True in map(lambda bone: bone.name in fcurve.data_path,\
+                                        bones):
                 continue            
 
             for m in fcurve.modifiers:
