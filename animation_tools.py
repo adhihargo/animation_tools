@@ -7,7 +7,7 @@ from mathutils import Vector
 bl_info = {
     "name": "ADH Animation Tools",
     "author": "Adhi Hargo",
-    "version": (1, 0, 0),
+    "version": (2013, 4, 15),
     "blender": (2, 65, 0),
     "location": "F-Curve Editor > Tools",
     "description": "Various animation tools.",
