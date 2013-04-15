@@ -204,7 +204,8 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         return context.active_object != None\
-            and context.active_object.animation_data != None
+            and context.active_object.animation_data != None\
+            and context.active_object.animation_data.action != None
 
     def draw(self, context):
         layout = self.layout
@@ -276,7 +277,8 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         return context.active_object != None\
-            and context.active_object.animation_data != None
+            and context.active_object.animation_data != None\
+            and context.active_object.animation_data.action != None
 
     def draw(self, context):
         layout = self.layout
@@ -310,8 +312,28 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
-class ADH_ObjectSnapToObject(bpy.types.Operator):
+class ADH_ObjectSnapToPrevKeyframe(bpy.types.Operator):
     """Snap active object/bone to selected object."""
+    bl_idname = 'object.adh_snap_to_prev_keyframe'
+    bl_label = 'Snap to Previous Keyframe'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.active_object != None\
+            and context.active_object.animation_data != None\
+            and context.active_object.animation_data.action != None
+
+    def execute(self, context):
+        bone = context.active_pose_bone
+        action = context.object.animation_data.action
+        fcurves = [str(c) for c in action.fcurves if bone.name in c.data_path]
+        print("\n".join(fcurves))
+        print('*' * 50)
+        return {'FINISHED'}
+
+class ADH_ObjectSnapToObject(bpy.types.Operator):
+    """Snap active object/bone to selected object/bone."""
     bl_idname = 'object.adh_snap_to_object'
     bl_label = 'Snap to Object'
     bl_options = {'REGISTER', 'UNDO'}
@@ -346,6 +368,19 @@ class ADH_ObjectSnapToObject(bpy.types.Operator):
             scale_orig = bone.matrix.to_scale()
             bone.matrix = mat
             if not self.snap_scale: bone.scale = scale_orig
+        elif target.type == 'ARMATURE' and target.data.bones.active != None:
+            target_bone = target.pose.bones.get(target.data.bones.active.name)
+            
+            mat = target.matrix_world * target_bone.matrix
+            active.location = mat.to_translation()
+
+            active.rotation_mode = 'XYZ'
+            active.rotation_euler = mat.to_euler()
+
+            if self.snap_scale:
+                scl = mat.to_scale()
+                scl_avg = (scl[0] + scl[1] + scl[2]) / 3
+                active.scale = (target_bone.length * scl_avg), (target_bone.length * scl_avg), (target_bone.length * scl_avg)
         else:
             scale_orig = active.matrix_world.to_scale()
             active.matrix_world = target.matrix_world
@@ -396,6 +431,7 @@ class ADH_AnimationToolsView3DPanel(bpy.types.Panel):
 
         col = layout.column(align=True)
         col.operator('object.adh_snap_to_object')
+        col.operator('object.adh_snap_to_prev_keyframe')
 
 def register():
     bpy.utils.register_module(__name__)
