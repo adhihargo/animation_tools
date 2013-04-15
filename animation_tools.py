@@ -310,6 +310,49 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
+class ADH_ObjectSnapToObject(bpy.types.Operator):
+    """Snap active object/bone to selected object."""
+    bl_idname = 'object.adh_snap_to_object'
+    bl_label = 'Snap to Object'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    snap_scale = bpy.props.BoolProperty(
+        name="Adjust Scale",
+        description="Also adjusting scale to reference object.",
+        default=False,
+        )
+
+    @classmethod
+    def poll(self, context):
+        return len(context.selected_objects) == 2\
+            and context.mode in ['POSE', 'OBJECT']
+
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row(align=True)
+        row.prop(self, "snap_scale")
+
+    def execute(self, context):
+        target = [o for o in context.selected_objects
+                  if o != context.active_object][0]
+        active = context.active_object
+
+        mat = target.matrix_world
+        if context.mode == 'POSE':
+            bone = context.active_pose_bone
+            mat = active.matrix_world.inverted() * target.matrix_world
+
+            scale_orig = bone.matrix.to_scale()
+            bone.matrix = mat
+            if not self.snap_scale: bone.scale = scale_orig
+        else:
+            scale_orig = active.matrix_world.to_scale()
+            active.matrix_world = target.matrix_world
+            if not self.snap_scale: active.scale = scale_orig
+
+        return {'FINISHED'}
+
 # ======================================================================
 # =========================== User Interface ===========================
 # ======================================================================
@@ -350,6 +393,9 @@ class ADH_AnimationToolsView3DPanel(bpy.types.Panel):
         row.prop(context.scene.tool_settings, "use_keyframe_insert_auto", text='')
         row.prop_search(context.scene.keying_sets_all, "active",
                         context.scene, "keying_sets_all", text='')
+
+        col = layout.column(align=True)
+        col.operator('object.adh_snap_to_object')
 
 def register():
     bpy.utils.register_module(__name__)
