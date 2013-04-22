@@ -2,7 +2,7 @@
 # License: GPL v2
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 bl_info = {
     "name": "ADH Animation Tools",
@@ -256,7 +256,7 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
-class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
+class GRAPH_OT_ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     """Removes cycle modifier from all available f-curve channels"""
     bl_idname = 'graph.adh_fcurve_remove_cycle_modifier'
     bl_label = 'Remove Cycle Modifier'
@@ -312,7 +312,7 @@ class ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
-class ADH_ObjectSnapToPrevKeyframe(bpy.types.Operator):
+class VIEW3D_OT_ADH_ObjectSnapToPrevKeyframe(bpy.types.Operator):
     """Snap active object/bone to selected object."""
     bl_idname = 'object.adh_snap_to_prev_keyframe'
     bl_label = 'Snap to Previous Keyframe'
@@ -332,14 +332,20 @@ class ADH_ObjectSnapToPrevKeyframe(bpy.types.Operator):
         print('*' * 50)
         return {'FINISHED'}
 
-class ADH_ObjectSnapToObject(bpy.types.Operator):
+class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
     """Snap active object/bone to selected object/bone."""
     bl_idname = 'object.adh_snap_to_object'
     bl_label = 'Snap to Object'
     bl_options = {'REGISTER', 'UNDO'}
 
+    snap_rotation = bpy.props.BoolProperty(
+        name="Rotation",
+        description="Also adjusting rotation to reference object.",
+        default=True,
+        )
+
     snap_scale = bpy.props.BoolProperty(
-        name="Adjust Scale",
+        name="Scale",
         description="Also adjusting scale to reference object.",
         default=False,
         )
@@ -352,8 +358,10 @@ class ADH_ObjectSnapToObject(bpy.types.Operator):
     def draw(self, context):
         layout = self.layout
 
-        row = layout.row(align=True)
-        row.prop(self, "snap_scale")
+        if context.mode != 'POSE':
+            row = layout.row(align=True)
+            row.prop(self, "snap_rotation")
+            row.prop(self, "snap_scale")
 
     def execute(self, context):
         target = [o for o in context.selected_objects
@@ -362,29 +370,60 @@ class ADH_ObjectSnapToObject(bpy.types.Operator):
 
         mat = target.matrix_world
         if context.mode == 'POSE':
-            bone = context.active_pose_bone
-            mat = active.matrix_world.inverted() * target.matrix_world
+            def get_pbone_parent_matrix(pbone):
+                parent = matrix = None
+                if pbone.constraints != None:
+                    co = [c for c in pbone.constraints
+                          if c.type == 'CHILD_OF' and c.influence == 1.0]
+                    if co:
+                        co = co[0]                
+                        parent = co.target
+                        matrix = parent.matrix_basis
 
-            scale_orig = bone.matrix.to_scale()
-            bone.matrix = mat
-            if not self.snap_scale: bone.scale = scale_orig
+                if not parent:
+                    parent = pbone.parent
+                    if parent:
+                        matrix = parent.matrix_basis
+
+                return parent, matrix
+
+            # l2w = lObjw * (l2l * l1b * l0b)
+            # l2l = (l2w * lObjw.inv) * l1b.inv * l0b.inv
+            pbone = context.active_pose_bone
+            mat = active.matrix_world.inverted() * mat
+
+            parent, pmatrix = get_pbone_parent_matrix(pbone)
+            while parent != None:
+                mat = pmatrix * mat
+                parent, pmatrix = get_pbone_parent_matrix(parent)
+
+            pbone.matrix = mat
+
         elif target.type == 'ARMATURE' and target.data.bones.active != None:
             target_bone = target.pose.bones.get(target.data.bones.active.name)
             
             mat = target.matrix_world * target_bone.matrix
             active.location = mat.to_translation()
 
-            active.rotation_mode = 'XYZ'
-            active.rotation_euler = mat.to_euler()
+            if self.snap_rotation:
+                active.rotation_mode = 'XYZ'
+                active.rotation_euler = mat.to_euler()
 
             if self.snap_scale:
                 scl = mat.to_scale()
                 scl_avg = (scl[0] + scl[1] + scl[2]) / 3
-                active.scale = (target_bone.length * scl_avg), (target_bone.length * scl_avg), (target_bone.length * scl_avg)
+                active.scale = ((target_bone.length * scl_avg),
+                                (target_bone.length * scl_avg),
+                                (target_bone.length * scl_avg))
+
         else:
-            scale_orig = active.matrix_world.to_scale()
+            rot_orig = active.matrix_world.to_euler()
+            scl_orig = active.matrix_world.to_scale()
             active.matrix_world = target.matrix_world
-            if not self.snap_scale: active.scale = scale_orig
+            if not self.snap_rotation:
+                active.rotation_mode = 'XYZ'
+                active.rotation_euler = rot_orig
+            if not self.snap_scale: active.scale = scl_orig
 
         return {'FINISHED'}
 
@@ -392,7 +431,7 @@ class ADH_ObjectSnapToObject(bpy.types.Operator):
 # =========================== User Interface ===========================
 # ======================================================================
 
-class ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
+class GRAPH_PT_ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
     bl_label = 'ADH Animation Tools'
     bl_space_type = 'GRAPH_EDITOR'
     bl_region_type = 'UI'
@@ -412,7 +451,7 @@ class ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
         row = layout.row(align=True)
         row.operator('graph.adh_fcurve_bake_action')
 
-class ADH_AnimationToolsView3DPanel(bpy.types.Panel):
+class VIEW3D_PT_ADH_AnimationToolsView3DPanel(bpy.types.Panel):
     bl_label = 'ADH Animation Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -431,7 +470,6 @@ class ADH_AnimationToolsView3DPanel(bpy.types.Panel):
 
         col = layout.column(align=True)
         col.operator('object.adh_snap_to_object')
-        col.operator('object.adh_snap_to_prev_keyframe')
 
 def register():
     bpy.utils.register_module(__name__)
