@@ -370,6 +370,12 @@ class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
         default=False,
         )
 
+    snap_pbone_rotation_scale = bpy.props.BoolProperty(
+        name="Rotation + Scale",
+        description="Also adjusting rotation and scale to reference object.",
+        default=False,
+        )
+
     @classmethod
     def poll(self, context):
         return len(context.selected_objects) == 2\
@@ -378,10 +384,12 @@ class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
     def draw(self, context):
         layout = self.layout
 
+        row = layout.row(align=True)
         if context.mode != 'POSE':
-            row = layout.row(align=True)
-            row.prop(self, "snap_rotation")
-            row.prop(self, "snap_scale")
+            row.prop(self, "snap_rotation", toggle=True)
+            row.prop(self, "snap_scale", toggle=True)
+        else:
+            row.prop(self, "snap_pbone_rotation_scale", toggle=True)
 
     def execute(self, context):
         target = [o for o in context.selected_objects
@@ -394,11 +402,12 @@ class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
             # l2l = (l2w * lObjw.inv) * l1b.inv * l0b.inv
             # mat = active.matrix_world.inverted() * mat
 
-            # pbone = context.active_pose_bone
-            # for p in pbone.parent_recursive:
-            #     mat = p.matrix_basis * mat
-            # mat[3][0] = mat[3][1] = mat[3][2] = 0
-            # pbone.matrix = mat
+            if self.snap_pbone_rotation_scale:
+                pbone = context.active_pose_bone
+                for p in pbone.parent_recursive:
+                    mat = p.matrix_basis * mat
+                mat[3][0] = mat[3][1] = mat[3][2] = 0
+                pbone.matrix = mat
 
             cursor_old = context.scene.cursor_location.copy()
             
