@@ -16,6 +16,26 @@ bl_info = {
     "tracker_url": "",
     "category": "Animation"}
 
+def get_pbone_parent_matrix(pbone):
+    # like parent_recursive, but tries to detect active
+    # Child Of constraint and get its target instead.
+    parent = matrix = inv_matrix = None
+    if pbone.constraints != None:
+        co = [c for c in pbone.constraints
+              if c.type == 'CHILD_OF' and c.influence == 1.0]
+        if co:
+            co = co[0]                
+            parent = co.target
+            matrix = parent.matrix_basis.inverted()
+            inv_matrix = co.inverse_matrix
+
+            if not parent:
+                parent = pbone.parent
+                if parent:
+                    matrix = parent.matrix_basis
+
+    return parent, matrix, inv_matrix
+
 def bake_action(obj, frame_start, frame_end, only_selected, only_visible):
     action = obj.animation_data.action
 
@@ -370,32 +390,16 @@ class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
 
         mat = target.matrix_world
         if context.mode == 'POSE':
-            def get_pbone_parent_matrix(pbone):
-                parent = matrix = None
-                if pbone.constraints != None:
-                    co = [c for c in pbone.constraints
-                          if c.type == 'CHILD_OF' and c.influence == 1.0]
-                    if co:
-                        co = co[0]                
-                        parent = co.target
-                        matrix = parent.matrix_basis
-
-                if not parent:
-                    parent = pbone.parent
-                    if parent:
-                        matrix = parent.matrix_basis
-
-                return parent, matrix
-
             # l2w = lObjw * (l2l * l1b * l0b)
             # l2l = (l2w * lObjw.inv) * l1b.inv * l0b.inv
             pbone = context.active_pose_bone
             mat = active.matrix_world.inverted() * mat
 
-            parent, pmatrix = get_pbone_parent_matrix(pbone)
+            parent, pmatrix, inv_matrix = get_pbone_parent_matrix(pbone)
             while parent != None:
-                mat = pmatrix * mat
-                parent, pmatrix = get_pbone_parent_matrix(parent)
+                if not inv_matrix:
+                    mat = pmatrix * mat
+                parent, pmatrix, inv_matrix = get_pbone_parent_matrix(parent)
 
             pbone.matrix = mat
 
