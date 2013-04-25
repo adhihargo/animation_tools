@@ -392,13 +392,21 @@ class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
         if context.mode == 'POSE':
             # l2w = lObjw * (l2l * l1b * l0b)
             # l2l = (l2w * lObjw.inv) * l1b.inv * l0b.inv
-            cursor_old = context.scene.cursor_location
+            # mat = active.matrix_world.inverted() * mat
+
+            # pbone = context.active_pose_bone
+            # for p in pbone.parent_recursive:
+            #     mat = p.matrix_basis * mat
+            # mat[3][0] = mat[3][1] = mat[3][2] = 0
+            # pbone.matrix = mat
+
+            cursor_old = context.scene.cursor_location.copy()
+            
             context.scene.objects.active = target
             bpy.ops.view3d.snap_cursor_to_active()
+
             context.scene.objects.active = active
             bpy.ops.view3d.snap_selected_to_cursor()
-
-            pbone = context.active_pose_bone
 
             context.scene.cursor_location = cursor_old
 
