@@ -483,16 +483,26 @@ class SEQUENCER_OT_ADH_MovieStripAdd(bpy.types.Operator):
     def execute(self, context):
         frame_start = self.frame_start
         channel = self.channel
+        files = []
         for f in self.files:
             filepath = os.path.join(self.directory, f.name)
+            if os.path.isdir(filepath):
+                files.extend([os.path.join(filepath, f)
+                              for f in os.listdir(filepath)
+                              if os.path.isfile(os.path.join(filepath, f))])
+            elif os.path.isfile(filepath):
+                files.append(filepath)
+        
+        for filepath in files:
             bpy.ops.sequencer.movie_strip_add(
                 filepath = filepath,
                 frame_start = frame_start,
                 channel = channel)
             bpy.ops.sequencer.meta_make()
-            context.scene.sequence_editor.active_strip.name = '%.50s_group' % f.name
+            active_strip = context.scene.sequence_editor.active_strip
+            active_strip.name = '%.50s_group' % os.path.basename(filepath)
             if self.consecutive:
-                frame_start = context.scene.sequence_editor.active_strip.frame_final_end
+                frame_start = active_strip.frame_final_end
         return {'FINISHED'}
 
     def invoke(self, context, event):
