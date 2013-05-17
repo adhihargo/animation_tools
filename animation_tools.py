@@ -1,7 +1,7 @@
 # Author: Adhi Hargo (cadmus.sw@gmail.com)
 # License: GPL v2
 
-import bpy
+import bpy, os
 from mathutils import Matrix, Vector
 
 bl_info = {
@@ -448,20 +448,18 @@ class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
         return {'FINISHED'}
 
 class SEQUENCER_OT_ADH_MovieStripAdd(bpy.types.Operator):
-    """Snap active object/bone to selected object."""
+    """Add one or more movie strips, each file's audio and video strips automatically grouped as one metastrip."""
     bl_idname = 'sequencer.adh_grouped_movie_strip_add'
-    bl_label = 'Add Grouped Movie Strip'
+    bl_label = 'Add Grouped Movie Strips'
     bl_options = {'REGISTER', 'UNDO'}
 
-    filepath = bpy.props.StringProperty(
-        name='File Path',
-        subtype='FILE_PATH')
-    filename = bpy.props.StringProperty()
-    # files = bpy.props.CollectionProperty()
-
+    files = bpy.props.CollectionProperty(
+        name="File Path",
+        type=bpy.types.OperatorFileListElement)
     directory = bpy.props.StringProperty(
         default='//', subtype='DIR_PATH',
         options={'HIDDEN'})
+
     frame_start = bpy.props.IntProperty(
         subtype='UNSIGNED',
         options={'HIDDEN'})
@@ -472,13 +470,29 @@ class SEQUENCER_OT_ADH_MovieStripAdd(bpy.types.Operator):
         default=True,
         options={'HIDDEN'})
 
+    channel = bpy.props.IntProperty(
+        name='Channel',
+        default=1,
+        min=1,max=32)
+    consecutive = bpy.props.BoolProperty(
+        name='Consecutive Strips',
+        description='Position all movie strips in the same channel, one after the other.',
+        default=True
+        )
+
     def execute(self, context):
-        bpy.ops.sequencer.movie_strip_add(
-            filepath = self.filepath,
-            frame_start = self.frame_start)
-        bpy.ops.sequencer.meta_make()
-        context.scene.sequence_editor.active_strip.name = '%.50s_group' % self.filename
-        print(self.filepath)
+        frame_start = self.frame_start
+        channel = self.channel
+        for f in self.files:
+            filepath = os.path.join(self.directory, f.name)
+            bpy.ops.sequencer.movie_strip_add(
+                filepath = filepath,
+                frame_start = frame_start,
+                channel = channel)
+            bpy.ops.sequencer.meta_make()
+            context.scene.sequence_editor.active_strip.name = '%.50s_group' % f.name
+            if self.consecutive:
+                frame_start = context.scene.sequence_editor.active_strip.frame_final_end
         return {'FINISHED'}
 
     def invoke(self, context, event):
