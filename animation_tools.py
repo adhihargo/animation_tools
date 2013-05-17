@@ -453,27 +453,37 @@ class SEQUENCER_OT_ADH_MovieStripAdd(bpy.types.Operator):
     bl_label = 'Add Grouped Movie Strip'
     bl_options = {'REGISTER', 'UNDO'}
 
-    filepath = bpy.props.StringProperty(subtype='FILE_PATH')
+    filepath = bpy.props.StringProperty(
+        name='File Path',
+        subtype='FILE_PATH')
+    filename = bpy.props.StringProperty()
     # files = bpy.props.CollectionProperty()
 
-    filter_movie = bpy.props.BoolProperty()
-    frame_start = bpy.props.IntProperty(subtype='UNSIGNED')
-    display_type = bpy.props.StringProperty()
+    directory = bpy.props.StringProperty(
+        default='//', subtype='DIR_PATH',
+        options={'HIDDEN'})
+    frame_start = bpy.props.IntProperty(
+        subtype='UNSIGNED',
+        options={'HIDDEN'})
+    filter_movie = bpy.props.BoolProperty(
+        default=True,
+        options={'HIDDEN'})
+    filter_folder = bpy.props.BoolProperty(
+        default=True,
+        options={'HIDDEN'})
 
     def execute(self, context):
         bpy.ops.sequencer.movie_strip_add(
             filepath = self.filepath,
             frame_start = self.frame_start)
         bpy.ops.sequencer.meta_make()
+        context.scene.sequence_editor.active_strip.name = '%.50s_group' % self.filename
         print(self.filepath)
-        # print(self.files)
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        self.filter_movie = True
         self.frame_start = context.scene.frame_start
-        self.display_type = 'FILE_IMGDISPLAY'
-
+    
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
@@ -501,7 +511,7 @@ class GRAPH_PT_ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
         row = layout.row(align=True)
         row.operator('graph.adh_fcurve_bake_action')
 
-class VIEW3D_PT_ADH_AnimationToolsView3DPanel(bpy.types.Panel):
+class VIEW3D_PT_ADH_AnimationToolsPanel(bpy.types.Panel):
     bl_label = 'ADH Animation Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -521,7 +531,7 @@ class VIEW3D_PT_ADH_AnimationToolsView3DPanel(bpy.types.Panel):
         col = layout.column(align=True)
         col.operator('object.adh_snap_to_object')
 
-class VIEW3D_PT_ADH_AnimationToolsVSEPanel(bpy.types.Panel):
+class SEQUENCER_PT_ADH_AnimationToolsPanel(bpy.types.Panel):
     bl_label = 'ADH Animation Tools'
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_region_type = 'UI'
@@ -535,7 +545,6 @@ class VIEW3D_PT_ADH_AnimationToolsVSEPanel(bpy.types.Panel):
 
         col = layout.column(align=True)
         col.operator('sequencer.adh_grouped_movie_strip_add')
-        col.operator('sequencer.movie_strip_add')
 
 def register():
     bpy.utils.register_module(__name__)
