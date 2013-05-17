@@ -447,6 +447,36 @@ class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
 
         return {'FINISHED'}
 
+class SEQUENCER_OT_ADH_MovieStripAdd(bpy.types.Operator):
+    """Snap active object/bone to selected object."""
+    bl_idname = 'sequencer.adh_grouped_movie_strip_add'
+    bl_label = 'Add Grouped Movie Strip'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    filepath = bpy.props.StringProperty(subtype='FILE_PATH')
+    # files = bpy.props.CollectionProperty()
+
+    filter_movie = bpy.props.BoolProperty()
+    frame_start = bpy.props.IntProperty(subtype='UNSIGNED')
+    display_type = bpy.props.StringProperty()
+
+    def execute(self, context):
+        bpy.ops.sequencer.movie_strip_add(
+            filepath = self.filepath,
+            frame_start = self.frame_start)
+        bpy.ops.sequencer.meta_make()
+        print(self.filepath)
+        # print(self.files)
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.filter_movie = True
+        self.frame_start = context.scene.frame_start
+        self.display_type = 'FILE_IMGDISPLAY'
+
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
 # ======================================================================
 # =========================== User Interface ===========================
 # ======================================================================
@@ -490,6 +520,22 @@ class VIEW3D_PT_ADH_AnimationToolsView3DPanel(bpy.types.Panel):
 
         col = layout.column(align=True)
         col.operator('object.adh_snap_to_object')
+
+class VIEW3D_PT_ADH_AnimationToolsVSEPanel(bpy.types.Panel):
+    bl_label = 'ADH Animation Tools'
+    bl_space_type = 'SEQUENCE_EDITOR'
+    bl_region_type = 'UI'
+
+    @classmethod
+    def poll(self, context):
+        return True
+
+    def draw(self, context):
+        layout = self.layout
+
+        col = layout.column(align=True)
+        col.operator('sequencer.adh_grouped_movie_strip_add')
+        col.operator('sequencer.movie_strip_add')
 
 def register():
     bpy.utils.register_module(__name__)
