@@ -5,7 +5,7 @@ import bpy, os
 from mathutils import Matrix, Vector
 
 bl_info = {
-    "name": "ADH Animation Tools",
+    "name": "OHA Animation Tools",
     "author": "Adhi Hargo",
     "version": (2013, 4, 15),
     "blender": (2, 65, 0),
@@ -119,9 +119,9 @@ def bake_action(obj, frame_start, frame_end, only_selected, only_visible):
 # ======================================================================
 
 # Uses bpy.ops.nla.bake as starting point.
-class ADH_FCurveBakeAction(bpy.types.Operator):
+class OHA_FCurveBakeAction(bpy.types.Operator):
     """Bake object/pose loc/scale/rotation animation to a new action"""
-    bl_idname = 'graph.adh_fcurve_bake_action'
+    bl_idname = 'graph.oha_fcurve_bake_action'
     bl_label = 'Bake Action'
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -179,9 +179,9 @@ class ADH_FCurveBakeAction(bpy.types.Operator):
     
         return context.window_manager.invoke_props_dialog(self)
 
-class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
+class OHA_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
     """Add cycle modifier to all available f-curve channels"""
-    bl_idname = 'graph.adh_fcurve_add_cycle_modifier'
+    bl_idname = 'graph.oha_fcurve_add_cycle_modifier'
     bl_label = 'Add Cycle Modifier'
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -276,9 +276,9 @@ class ADH_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
-class GRAPH_OT_ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
+class GRAPH_OT_OHA_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     """Removes cycle modifier from all available f-curve channels"""
-    bl_idname = 'graph.adh_fcurve_remove_cycle_modifier'
+    bl_idname = 'graph.oha_fcurve_remove_cycle_modifier'
     bl_label = 'Remove Cycle Modifier'
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -332,9 +332,9 @@ class GRAPH_OT_ADH_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
-class VIEW3D_OT_ADH_ObjectSnapToPrevKeyframe(bpy.types.Operator):
+class VIEW3D_OT_OHA_ObjectSnapToPrevKeyframe(bpy.types.Operator):
     """Snap active object/bone to selected object."""
-    bl_idname = 'object.adh_snap_to_prev_keyframe'
+    bl_idname = 'object.oha_snap_to_prev_keyframe'
     bl_label = 'Snap to Previous Keyframe'
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -352,9 +352,9 @@ class VIEW3D_OT_ADH_ObjectSnapToPrevKeyframe(bpy.types.Operator):
         print('*' * 50)
         return {'FINISHED'}
 
-class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
+class VIEW3D_OT_OHA_ObjectSnapToObject(bpy.types.Operator):
     """Snap active object/bone to selected object/bone."""
-    bl_idname = 'object.adh_snap_to_object'
+    bl_idname = 'object.oha_snap_to_object'
     bl_label = 'Snap to Object'
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -447,9 +447,9 @@ class VIEW3D_OT_ADH_ObjectSnapToObject(bpy.types.Operator):
 
         return {'FINISHED'}
 
-class SEQUENCER_OT_ADH_MovieStripAdd(bpy.types.Operator):
+class SEQUENCER_OT_OHA_MovieStripAdd(bpy.types.Operator):
     """Add one or more movie strips, each file's audio and video strips automatically grouped as one metastrip."""
-    bl_idname = 'sequencer.adh_grouped_movie_strip_add'
+    bl_idname = 'sequencer.oha_grouped_movie_strip_add'
     bl_label = 'Add Grouped Movie Strips'
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -509,8 +509,8 @@ class SEQUENCER_OT_ADH_MovieStripAdd(bpy.types.Operator):
 # =========================== User Interface ===========================
 # ======================================================================
 
-class GRAPH_PT_ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
-    bl_label = 'ADH Animation Tools'
+class GRAPH_PT_OHA_AnimationToolsFCurvePanel(bpy.types.Panel):
+    bl_label = 'OHA Animation Tools'
     bl_space_type = 'GRAPH_EDITOR'
     bl_region_type = 'UI'
 
@@ -523,14 +523,14 @@ class GRAPH_PT_ADH_AnimationToolsFCurvePanel(bpy.types.Panel):
         layout = self.layout
 
         row = layout.row(align=True)
-        row.operator('graph.adh_fcurve_add_cycle_modifier')
-        row.operator('graph.adh_fcurve_remove_cycle_modifier', icon="CANCEL", text='')
+        row.operator('graph.oha_fcurve_add_cycle_modifier')
+        row.operator('graph.oha_fcurve_remove_cycle_modifier', icon="CANCEL", text='')
 
         row = layout.row(align=True)
-        row.operator('graph.adh_fcurve_bake_action')
+        row.operator('graph.oha_fcurve_bake_action')
 
-class VIEW3D_PT_ADH_AnimationToolsPanel(bpy.types.Panel):
-    bl_label = 'ADH Animation Tools'
+class VIEW3D_PT_OHA_AnimationToolsPanel(bpy.types.Panel):
+    bl_label = 'OHA Animation Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
 
@@ -547,10 +547,10 @@ class VIEW3D_PT_ADH_AnimationToolsPanel(bpy.types.Panel):
                         context.scene, "keying_sets_all", text='')
 
         col = layout.column(align=True)
-        col.operator('object.adh_snap_to_object')
+        col.operator('object.oha_snap_to_object')
 
-class SEQUENCER_PT_ADH_AnimationToolsPanel(bpy.types.Panel):
-    bl_label = 'ADH Animation Tools'
+class SEQUENCER_PT_OHA_AnimationToolsPanel(bpy.types.Panel):
+    bl_label = 'OHA Animation Tools'
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_region_type = 'UI'
 
@@ -562,7 +562,7 @@ class SEQUENCER_PT_ADH_AnimationToolsPanel(bpy.types.Panel):
         layout = self.layout
 
         col = layout.column(align=True)
-        col.operator('sequencer.adh_grouped_movie_strip_add')
+        col.operator('sequencer.oha_grouped_movie_strip_add')
 
 def register():
     bpy.utils.register_module(__name__)
