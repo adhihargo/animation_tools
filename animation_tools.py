@@ -3,6 +3,7 @@
 
 import bpy, os
 from mathutils import Matrix, Vector
+from bpy.app.handlers import persistent
 
 bl_info = {
     "name": "OHA Animation Tools",
@@ -505,6 +506,15 @@ class SEQUENCER_OT_OHA_MovieStripAdd(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
+class RENDER_OT_OHA_validator(bpy.types.Operator):
+    """Check and modify all render-related scene settings before rendering."""
+    bl_idname = 'render.oha_validator'
+    bl_label = 'Validate Render Settings'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        return {'FINISHED'}
+
 # ======================================================================
 # =========================== User Interface ===========================
 # ======================================================================
@@ -564,11 +574,28 @@ class SEQUENCER_PT_OHA_AnimationToolsPanel(bpy.types.Panel):
         col = layout.column(align=True)
         col.operator('sequencer.oha_grouped_movie_strip_add')
 
+@persistent
+def handler_validator(dummy):
+    for scene in bpy.data.scenes:
+        scene.use_preview_range = False
+
+def qa_render_properties(self, context):
+    layout = self.layout
+
+    row = layout.row(align=True)
+    row.operator('render.oha_validator')
+
 def register():
     bpy.utils.register_module(__name__)
+    bpy.types.RENDER_PT_render.prepend(qa_render_properties)
+    if not handler_validator in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(handler_validator)
     
 def unregister():
     bpy.utils.unregister_module(__name__)
+    bpy.types.RENDER_PT_render.remove(qa_render_properties)
+    if handler_validator in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(handler_validator)
 
 if __name__ == "__main__":
     register()
