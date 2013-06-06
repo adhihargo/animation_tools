@@ -548,7 +548,7 @@ class RENDER_OT_OHA_render_qc_preset_add(AddPresetBase, bpy.types.Operator):
         "render.stamp_font_size",               "render.resolution_y",
         "render.filepath",
         "image.file_format",                    "ffmpeg.format",
-        "ffmpeg.codec",                         "ffmpeg.audio_codec"   
+        "ffmpeg.codec",                         "ffmpeg.audio_codec",
         "ffmpeg.video_bitrate",                 "ffmpeg.audio_bitrate",        
         "ffmpeg.audio_channels",
         ]
