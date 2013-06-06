@@ -4,12 +4,13 @@
 import bpy, os
 from mathutils import Matrix, Vector
 from bpy.app.handlers import persistent
+from bl_operators.presets import AddPresetBase, ExecutePreset
 
 bl_info = {
     "name": "OHA Animation Tools",
     "author": "Adhi Hargo",
-    "version": (2013, 4, 15),
-    "blender": (2, 65, 0),
+    "version": (2013, 5, 6),
+    "blender": (2, 67, 0),
     "location": "F-Curve Editor > Tools",
     "description": "Various animation tools.",
     "warning": "",
@@ -506,19 +507,76 @@ class SEQUENCER_OT_OHA_MovieStripAdd(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
-class RENDER_OT_OHA_validator(bpy.types.Operator):
+class RENDER_OT_OHA_validate_and_render(bpy.types.Operator):
     """Check and modify all render-related scene settings before rendering."""
-    bl_idname = 'render.oha_validator'
-    bl_label = 'Validate Render Settings'
+    bl_idname = 'render.oha_validate_and_render'
+    bl_label = 'Animation (QC)'
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
+        bpy.ops.script.execute_preset()
         return {'FINISHED'}
+
+class RENDER_OT_OHA_render_qc_preset_add(AddPresetBase, bpy.types.Operator):
+    """Add a new preset containing all indicated settings."""
+    bl_idname = 'render.oha_render_qc_preset_add'
+    bl_label = 'Add Render QC Preset'
+    bl_options = {'REGISTER', 'UNDO'}
+    preset_menu = 'RENDER_MT_qc_presets'
+    preset_subdir = 'render_qc'
+
+    preset_defines = [
+        "scene  = bpy.context.scene",
+        "render = bpy.context.scene.render",
+        "image  = bpy.context.scene.render.image_settings",
+        "ffmpeg = bpy.context.scene.render.ffmpeg"
+        ]
+
+    preset_values = [
+        "scene.use_preview_range",
+        "render.engine",
+        "render.use_stamp",                     "render.use_stamp_marker",         
+        "render.use_stamp_camera",              "render.use_stamp_note",           
+        "render.use_stamp_date",                "render.use_stamp_render_time",    
+        "render.use_stamp_filename",            "render.use_stamp_scene",          
+        "render.use_stamp_frame",               "render.use_stamp_sequencer_strip",
+        "render.use_stamp_lens",                "render.use_stamp_time",        
+        "render.use_simplify",                  "render.use_antialiasing",
+        "render.use_freestyle",
+        "render.stamp_note_text",               "render.resolution_percentage",
+        "render.stamp_background",              "render.resolution_x",         
+        "render.stamp_font_size",               "render.resolution_y",
+        "render.filepath",
+        "image.file_format",                    "ffmpeg.format",
+        "ffmpeg.codec",                         "ffmpeg.audio_codec"   
+        "ffmpeg.video_bitrate",                 "ffmpeg.audio_bitrate",        
+        "ffmpeg.audio_channels",
+        ]
 
 # ======================================================================
 # =========================== User Interface ===========================
 # ======================================================================
 
+class RENDER_MT_qc_presets(bpy.types.Menu):
+    bl_label = "Render QC Presets"
+    preset_subdir = "render_qc"
+    preset_operator = "script.execute_preset"
+    draw = bpy.types.Menu.draw_preset
+
+class RENDER_PT_OHA_RenderQCPanel(bpy.types.Panel):
+    bl_label = 'OHA Render QC'
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = 'render'
+
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row(align=True)
+        row.menu("RENDER_MT_qc_presets", text=bpy.types.RENDER_MT_qc_presets.bl_label)
+        row.operator("render.oha_render_qc_preset_add", text="", icon='ZOOMIN')
+        row.operator("render.oha_render_qc_preset_add", text="", icon='ZOOMOUT').remove_active = True
+
 class GRAPH_PT_OHA_AnimationToolsFCurvePanel(bpy.types.Panel):
     bl_label = 'OHA Animation Tools'
     bl_space_type = 'GRAPH_EDITOR'
@@ -574,28 +632,19 @@ class SEQUENCER_PT_OHA_AnimationToolsPanel(bpy.types.Panel):
         col = layout.column(align=True)
         col.operator('sequencer.oha_grouped_movie_strip_add')
 
-@persistent
-def handler_validator(dummy):
-    for scene in bpy.data.scenes:
-        scene.use_preview_range = False
-
-def qa_render_properties(self, context):
+def qc_render_properties(self, context):
     layout = self.layout
 
     row = layout.row(align=True)
-    row.operator('render.oha_validator')
+    row.operator('render.oha_validate_and_render', icon='RENDER_ANIMATION')
 
 def register():
     bpy.utils.register_module(__name__)
-    bpy.types.RENDER_PT_render.prepend(qa_render_properties)
-    if not handler_validator in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(handler_validator)
+    bpy.types.RENDER_PT_render.prepend(qc_render_properties)
     
 def unregister():
     bpy.utils.unregister_module(__name__)
-    bpy.types.RENDER_PT_render.remove(qa_render_properties)
-    if handler_validator in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.remove(handler_validator)
+    bpy.types.RENDER_PT_render.remove(qc_render_properties)
 
 if __name__ == "__main__":
     register()
