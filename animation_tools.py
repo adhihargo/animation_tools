@@ -47,7 +47,8 @@ def bake_action(obj, frame_start, frame_end, only_selected, only_visible):
         if only_visible and fcurve.hide:
             continue
         if only_selected and\
-                not True in map(lambda bone: bone.name in fcurve.data_path, bones):
+                not True in map(lambda bone: bone.name in fcurve.data_path,
+                                bones):
             continue
 
         if len(fcurve.modifiers) == 1 and fcurve.modifiers[0].type == 'CYCLES':
@@ -79,8 +80,8 @@ def bake_action(obj, frame_start, frame_end, only_selected, only_visible):
                     count += 1
 
                     key_offset = -(count * key_delta_before)
-                    key_new = fcurve.keyframe_points.insert(key.co.x+key_offset.x,
-                                                            key.co.y+key_offset.y)
+                    key_new = fcurve.keyframe_points.insert(
+                        key.co.x+key_offset.x, key.co.y+key_offset.y)
                     key_new.handle_left_type = key.handle_left_type
                     key_new.handle_right_type = key.handle_right_type
                     key_new.handle_left = key.handle_left + key_offset
@@ -99,8 +100,8 @@ def bake_action(obj, frame_start, frame_end, only_selected, only_visible):
                     count += 1
 
                     key_offset = count * key_delta_after
-                    key_new = fcurve.keyframe_points.insert(key.co.x+key_offset.x,
-                                                            key.co.y+key_offset.y)
+                    key_new = fcurve.keyframe_points.insert(
+                        key.co.x+key_offset.x, key.co.y+key_offset.y)
                     key_new.handle_left_type = key.handle_left_type
                     key_new.handle_right_type = key.handle_right_type
                     key_new.handle_left = key.handle_left + key_offset
@@ -121,7 +122,7 @@ def bake_action(obj, frame_start, frame_end, only_selected, only_visible):
 # ======================================================================
 
 # Uses bpy.ops.nla.bake as starting point.
-class OHA_FCurveBakeAction(bpy.types.Operator):
+class oha_FCurveBakeAction(bpy.types.Operator):
     """Bake object/pose loc/scale/rotation animation to a new action"""
     bl_idname = 'graph.oha_fcurve_bake_action'
     bl_label = 'Bake Action'
@@ -181,7 +182,7 @@ class OHA_FCurveBakeAction(bpy.types.Operator):
     
         return context.window_manager.invoke_props_dialog(self)
 
-class OHA_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
+class oha_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
     """Add cycle modifier to all available f-curve channels"""
     bl_idname = 'graph.oha_fcurve_add_cycle_modifier'
     bl_label = 'Add Cycle Modifier'
@@ -278,7 +279,7 @@ class OHA_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
-class GRAPH_OT_OHA_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
+class GRAPH_OT_oha_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     """Removes cycle modifier from all available f-curve channels"""
     bl_idname = 'graph.oha_fcurve_remove_cycle_modifier'
     bl_label = 'Remove Cycle Modifier'
@@ -334,7 +335,7 @@ class GRAPH_OT_OHA_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
-class VIEW3D_OT_OHA_ObjectSnapToPrevKeyframe(bpy.types.Operator):
+class VIEW3D_OT_oha_ObjectSnapToPrevKeyframe(bpy.types.Operator):
     """Snap active object/bone to selected object."""
     bl_idname = 'object.oha_snap_to_prev_keyframe'
     bl_label = 'Snap to Previous Keyframe'
@@ -354,7 +355,7 @@ class VIEW3D_OT_OHA_ObjectSnapToPrevKeyframe(bpy.types.Operator):
         print('*' * 50)
         return {'FINISHED'}
 
-class VIEW3D_OT_OHA_ObjectSnapToObject(bpy.types.Operator):
+class VIEW3D_OT_oha_ObjectSnapToObject(bpy.types.Operator):
     """Snap active object/bone to selected object/bone."""
     bl_idname = 'object.oha_snap_to_object'
     bl_label = 'Snap to Object'
@@ -449,7 +450,7 @@ class VIEW3D_OT_OHA_ObjectSnapToObject(bpy.types.Operator):
 
         return {'FINISHED'}
 
-class SEQUENCER_OT_OHA_MovieStripAdd(bpy.types.Operator):
+class SEQUENCER_OT_oha_MovieStripAdd(bpy.types.Operator):
     """Add one or more movie strips, each file's audio and video strips automatically grouped as one metastrip."""
     bl_idname = 'sequencer.oha_grouped_movie_strip_add'
     bl_label = 'Add Grouped Movie Strips'
@@ -507,17 +508,23 @@ class SEQUENCER_OT_OHA_MovieStripAdd(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
-class RENDER_OT_OHA_validate_and_render(bpy.types.Operator):
+class RENDER_OT_oha_validate_and_render(bpy.types.Operator):
     """Check and modify all render-related scene settings before rendering."""
     bl_idname = 'render.oha_validate_and_render'
     bl_label = 'Animation (QC)'
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        bpy.ops.script.execute_preset()
+        props = context.scene.oha_animtool_props
+        filepath = props.render_preset_filepath
+        menu_idname = props.render_preset_menu_idname
+        if filepath != '':
+            bpy.ops.script.oha_execute_preset(filepath=filepath,
+                                              menu_idname=menu_idname)
+        bpy.ops.render.render('INVOKE_DEFAULT', animation=True)
         return {'FINISHED'}
 
-class RENDER_OT_OHA_render_qc_preset_add(AddPresetBase, bpy.types.Operator):
+class RENDER_OT_oha_render_qc_preset_add(AddPresetBase, bpy.types.Operator):
     """Add a new preset containing all indicated settings."""
     bl_idname = 'render.oha_render_qc_preset_add'
     bl_label = 'Add Render QC Preset'
@@ -535,10 +542,10 @@ class RENDER_OT_OHA_render_qc_preset_add(AddPresetBase, bpy.types.Operator):
     preset_values = [
         "scene.use_preview_range",
         "render.engine",
-        "render.use_stamp",                     "render.use_stamp_marker",         
-        "render.use_stamp_camera",              "render.use_stamp_note",           
-        "render.use_stamp_date",                "render.use_stamp_render_time",    
-        "render.use_stamp_filename",            "render.use_stamp_scene",          
+        "render.use_stamp",                     "render.use_stamp_marker",
+        "render.use_stamp_camera",              "render.use_stamp_note",
+        "render.use_stamp_date",                "render.use_stamp_render_time",
+        "render.use_stamp_filename",            "render.use_stamp_scene",
         "render.use_stamp_frame",               "render.use_stamp_sequencer_strip",
         "render.use_stamp_lens",                "render.use_stamp_time",        
         "render.use_simplify",                  "render.use_antialiasing",
@@ -553,17 +560,77 @@ class RENDER_OT_OHA_render_qc_preset_add(AddPresetBase, bpy.types.Operator):
         "ffmpeg.audio_channels",
         ]
 
+    @staticmethod
+    def as_filename(name):  # could reuse for other presets
+        for char in " !@#$%^&*(){}:\";'[]<>,.\\/?":
+            name = name.replace(char, '_')
+        return name.strip()
+
+class SCRIPT_OT_oha_execute_preset(ExecutePreset):
+    """Execute a preset"""
+    bl_idname = "script.oha_execute_preset"
+    bl_label = "Execute a Python Preset"
+
+    filepath = ExecutePreset.filepath
+    menu_idname = ExecutePreset.menu_idname
+
+    def execute(self, context):
+        props = context.scene.oha_animtool_props
+        props.render_preset_filepath = self.filepath
+        props.render_preset_menu_idname = self.menu_idname
+        return ExecutePreset.execute(self, context)
+
 # ======================================================================
 # =========================== User Interface ===========================
 # ======================================================================
 
 class RENDER_MT_qc_presets(bpy.types.Menu):
-    bl_label = "Render QC Presets"
+    bl_label = "Presets"
     preset_subdir = "render_qc"
-    preset_operator = "script.execute_preset"
-    draw = bpy.types.Menu.draw_preset
+    preset_operator = "script.oha_execute_preset"
+    
+    # Minimally modified from scripts/modules/bpy_types.py
+    def path_menu(self, searchpaths, operator,
+                  props_default={}, filter_ext=None):
 
-class RENDER_PT_OHA_RenderQCPanel(bpy.types.Panel):
+        layout = self.layout
+        # hard coded to set the operators 'filepath' to the filename.
+
+        import os
+        import bpy.utils
+
+        layout = self.layout
+
+        if not searchpaths:
+            layout.label("* Missing Paths *")
+
+        # collect paths
+        files = []
+        for directory in searchpaths:
+            files.extend([(f, os.path.join(directory, f))
+                          for f in os.listdir(directory)
+                          if (not f.startswith("."))
+                          if ((filter_ext is None) or
+                              (filter_ext(os.path.splitext(f)[1])))
+                          ])
+
+        files.sort()
+
+        for f, filepath in files:
+            props = layout.operator(operator,
+                                    text=bpy.path.display_name(f),
+                                    translate=False)
+
+            for attr, value in props_default.items():
+                setattr(props, attr, value)
+
+            props.filepath = filepath
+            props.menu_idname = self.bl_idname
+
+    def draw(self, context):
+        bpy.types.Menu.draw_preset(self, context)
+
+class RENDER_PT_oha_RenderQCPanel(bpy.types.Panel):
     bl_label = 'OHA Render QC'
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -573,11 +640,12 @@ class RENDER_PT_OHA_RenderQCPanel(bpy.types.Panel):
         layout = self.layout
 
         row = layout.row(align=True)
-        row.menu("RENDER_MT_qc_presets", text=bpy.types.RENDER_MT_qc_presets.bl_label)
+        row.menu("RENDER_MT_qc_presets",
+                 text=bpy.types.RENDER_MT_qc_presets.bl_label)
         row.operator("render.oha_render_qc_preset_add", text="", icon='ZOOMIN')
         row.operator("render.oha_render_qc_preset_add", text="", icon='ZOOMOUT').remove_active = True
 
-class GRAPH_PT_OHA_AnimationToolsFCurvePanel(bpy.types.Panel):
+class GRAPH_PT_oha_AnimationToolsFCurvePanel(bpy.types.Panel):
     bl_label = 'OHA Animation Tools'
     bl_space_type = 'GRAPH_EDITOR'
     bl_region_type = 'UI'
@@ -592,12 +660,13 @@ class GRAPH_PT_OHA_AnimationToolsFCurvePanel(bpy.types.Panel):
 
         row = layout.row(align=True)
         row.operator('graph.oha_fcurve_add_cycle_modifier')
-        row.operator('graph.oha_fcurve_remove_cycle_modifier', icon="CANCEL", text='')
+        row.operator('graph.oha_fcurve_remove_cycle_modifier', icon="CANCEL",
+                     text='')
 
         row = layout.row(align=True)
         row.operator('graph.oha_fcurve_bake_action')
 
-class VIEW3D_PT_OHA_AnimationToolsPanel(bpy.types.Panel):
+class VIEW3D_PT_oha_AnimationToolsPanel(bpy.types.Panel):
     bl_label = 'OHA Animation Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -610,14 +679,15 @@ class VIEW3D_PT_OHA_AnimationToolsPanel(bpy.types.Panel):
         layout = self.layout
 
         row = layout.row(align=True)
-        row.prop(context.scene.tool_settings, "use_keyframe_insert_auto", text='')
+        row.prop(context.scene.tool_settings, "use_keyframe_insert_auto",
+                 text='')
         row.prop_search(context.scene.keying_sets_all, "active",
                         context.scene, "keying_sets_all", text='')
 
         col = layout.column(align=True)
         col.operator('object.oha_snap_to_object')
 
-class SEQUENCER_PT_OHA_AnimationToolsPanel(bpy.types.Panel):
+class SEQUENCER_PT_oha_AnimationToolsPanel(bpy.types.Panel):
     bl_label = 'OHA Animation Tools'
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_region_type = 'UI'
@@ -632,6 +702,12 @@ class SEQUENCER_PT_OHA_AnimationToolsPanel(bpy.types.Panel):
         col = layout.column(align=True)
         col.operator('sequencer.oha_grouped_movie_strip_add')
 
+class OHA_AnimationToolProps(bpy.types.PropertyGroup):
+    render_preset_filepath = bpy.props.StringProperty(
+        subtype='FILE_PATH', options={'SKIP_SAVE'})
+    render_preset_menu_idname = bpy.props.StringProperty(
+        options={'SKIP_SAVE'})
+
 def qc_render_properties(self, context):
     layout = self.layout
 
@@ -641,10 +717,14 @@ def qc_render_properties(self, context):
 def register():
     bpy.utils.register_module(__name__)
     bpy.types.RENDER_PT_render.prepend(qc_render_properties)
-    
+    bpy.types.Scene.oha_animtool_props = bpy.props.PointerProperty(
+        type = OHA_AnimationToolProps,
+        options = {'HIDDEN'})
+
 def unregister():
     bpy.utils.unregister_module(__name__)
     bpy.types.RENDER_PT_render.remove(qc_render_properties)
+    del bpy.types.Scene.oha_animtool_props
 
 if __name__ == "__main__":
     register()
