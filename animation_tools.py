@@ -4,7 +4,6 @@
 import bpy, os
 from mathutils import Matrix, Vector
 from bpy.app.handlers import persistent
-from bl_operators.presets import AddPresetBase, ExecutePreset
 
 bl_info = {
     "name": "OHA Animation Tools",
@@ -508,143 +507,10 @@ class SEQUENCER_OT_oha_MovieStripAdd(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
-class RENDER_OT_oha_validate_and_render(bpy.types.Operator):
-    """Check and modify all render-related scene settings before rendering."""
-    bl_idname = 'render.oha_validate_and_render'
-    bl_label = 'Animation (QC)'
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        props = context.scene.oha_animtool_props
-        filepath = props.render_preset_filepath
-        menu_idname = props.render_preset_menu_idname
-        if filepath != '':
-            bpy.ops.script.oha_execute_preset(filepath=filepath,
-                                              menu_idname=menu_idname)
-        bpy.ops.render.render('INVOKE_DEFAULT', animation=True)
-        return {'FINISHED'}
-
-class RENDER_OT_oha_render_qc_preset_add(AddPresetBase, bpy.types.Operator):
-    """Add a new preset containing all indicated settings."""
-    bl_idname = 'render.oha_render_qc_preset_add'
-    bl_label = 'Add Render QC Preset'
-    bl_options = {'REGISTER', 'UNDO'}
-    preset_menu = 'RENDER_MT_qc_presets'
-    preset_subdir = 'render_qc'
-
-    preset_defines = [
-        "scene  = bpy.context.scene",
-        "render = bpy.context.scene.render",
-        "image  = bpy.context.scene.render.image_settings",
-        "ffmpeg = bpy.context.scene.render.ffmpeg"
-        ]
-
-    preset_values = [
-        "scene.use_preview_range",
-        "render.engine",
-        "render.use_stamp",                     "render.use_stamp_marker",
-        "render.use_stamp_camera",              "render.use_stamp_note",
-        "render.use_stamp_date",                "render.use_stamp_render_time",
-        "render.use_stamp_filename",            "render.use_stamp_scene",
-        "render.use_stamp_frame",               "render.use_stamp_sequencer_strip",
-        "render.use_stamp_lens",                "render.use_stamp_time",        
-        "render.use_simplify",                  "render.use_antialiasing",
-        "render.use_freestyle",
-        "render.stamp_note_text",               "render.resolution_percentage",
-        "render.stamp_background",              "render.resolution_x",         
-        "render.stamp_font_size",               "render.resolution_y",
-        "render.filepath",
-        "image.file_format",                    "ffmpeg.format",
-        "ffmpeg.codec",                         "ffmpeg.audio_codec",
-        "ffmpeg.video_bitrate",                 "ffmpeg.audio_bitrate",        
-        "ffmpeg.audio_channels",
-        ]
-
-    @staticmethod
-    def as_filename(name):  # could reuse for other presets
-        for char in " !@#$%^&*(){}:\";'[]<>,.\\/?":
-            name = name.replace(char, '_')
-        return name.strip()
-
-class SCRIPT_OT_oha_execute_preset(ExecutePreset):
-    """Execute a preset"""
-    bl_idname = "script.oha_execute_preset"
-    bl_label = "Execute a Python Preset"
-
-    filepath = ExecutePreset.filepath
-    menu_idname = ExecutePreset.menu_idname
-
-    def execute(self, context):
-        props = context.scene.oha_animtool_props
-        props.render_preset_filepath = self.filepath
-        props.render_preset_menu_idname = self.menu_idname
-        return ExecutePreset.execute(self, context)
-
 # ======================================================================
 # =========================== User Interface ===========================
 # ======================================================================
 
-class RENDER_MT_qc_presets(bpy.types.Menu):
-    bl_label = "Presets"
-    preset_subdir = "render_qc"
-    preset_operator = "script.oha_execute_preset"
-    
-    # Minimally modified from scripts/modules/bpy_types.py
-    def path_menu(self, searchpaths, operator,
-                  props_default={}, filter_ext=None):
-
-        layout = self.layout
-        # hard coded to set the operators 'filepath' to the filename.
-
-        import os
-        import bpy.utils
-
-        layout = self.layout
-
-        if not searchpaths:
-            layout.label("* Missing Paths *")
-
-        # collect paths
-        files = []
-        for directory in searchpaths:
-            files.extend([(f, os.path.join(directory, f))
-                          for f in os.listdir(directory)
-                          if (not f.startswith("."))
-                          if ((filter_ext is None) or
-                              (filter_ext(os.path.splitext(f)[1])))
-                          ])
-
-        files.sort()
-
-        for f, filepath in files:
-            props = layout.operator(operator,
-                                    text=bpy.path.display_name(f),
-                                    translate=False)
-
-            for attr, value in props_default.items():
-                setattr(props, attr, value)
-
-            props.filepath = filepath
-            props.menu_idname = self.bl_idname
-
-    def draw(self, context):
-        bpy.types.Menu.draw_preset(self, context)
-
-class RENDER_PT_oha_RenderQCPanel(bpy.types.Panel):
-    bl_label = 'OHA Render QC'
-    bl_space_type = 'PROPERTIES'
-    bl_region_type = 'WINDOW'
-    bl_context = 'render'
-
-    def draw(self, context):
-        layout = self.layout
-
-        row = layout.row(align=True)
-        row.menu("RENDER_MT_qc_presets",
-                 text=bpy.types.RENDER_MT_qc_presets.bl_label)
-        row.operator("render.oha_render_qc_preset_add", text="", icon='ZOOMIN')
-        row.operator("render.oha_render_qc_preset_add", text="", icon='ZOOMOUT').remove_active = True
-
 class GRAPH_PT_oha_AnimationToolsFCurvePanel(bpy.types.Panel):
     bl_label = 'OHA Animation Tools'
     bl_space_type = 'GRAPH_EDITOR'
@@ -702,29 +568,11 @@ class SEQUENCER_PT_oha_AnimationToolsPanel(bpy.types.Panel):
         col = layout.column(align=True)
         col.operator('sequencer.oha_grouped_movie_strip_add')
 
-class OHA_AnimationToolProps(bpy.types.PropertyGroup):
-    render_preset_filepath = bpy.props.StringProperty(
-        subtype='FILE_PATH', options={'SKIP_SAVE'})
-    render_preset_menu_idname = bpy.props.StringProperty(
-        options={'SKIP_SAVE'})
-
-def qc_render_properties(self, context):
-    layout = self.layout
-
-    row = layout.row(align=True)
-    row.operator('render.oha_validate_and_render', icon='RENDER_ANIMATION')
-
 def register():
     bpy.utils.register_module(__name__)
-    bpy.types.RENDER_PT_render.prepend(qc_render_properties)
-    bpy.types.Scene.oha_animtool_props = bpy.props.PointerProperty(
-        type = OHA_AnimationToolProps,
-        options = {'HIDDEN'})
 
 def unregister():
     bpy.utils.unregister_module(__name__)
-    bpy.types.RENDER_PT_render.remove(qc_render_properties)
-    del bpy.types.Scene.oha_animtool_props
 
 if __name__ == "__main__":
     register()
