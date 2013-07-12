@@ -1,9 +1,13 @@
 # Author: Adhi Hargo (cadmus.sw@gmail.com)
 # License: GPL v2
 
-import bpy, os
+import bpy
+import getpass
+import os
+import string
 from mathutils import Matrix, Vector
 from bpy.app.handlers import persistent
+from bl_operators.presets import AddPresetBase, ExecutePreset
 
 bl_info = {
     "name": "OHA Animation Tools",
@@ -116,12 +120,365 @@ def bake_action(obj, frame_start, frame_end, only_selected, only_visible):
 
     return action
 
+
+# ======================================================================
+# ============================= Properties =============================
+# ======================================================================
+
+# Kelas berikut ini dipakai menyimpan setting render asli, sekaligus
+# mengatur nilai default sebagian besar setting render khusus
+# preview. Sebagian lagi nilainya diambil secara dinamis dari konteks
+# (path file dan nama pengguna). Penamaannya berkorelasi dengan nama
+# yang tertera dalam tooltip setting terkait dalam GUI.
+#
+# Seluruh kode modifikasi setting render ada pada fungsi
+# "temp_settings" dalam operator "render.oha_opengl" persis di bawah
+# definisi kelas ini.
+class OHA_RenderOpenGLSettings(bpy.types.PropertyGroup):
+    space_show_only_render              = bpy.props.BoolProperty(default=True)
+    render_use_stamp                    = bpy.props.BoolProperty(default=True)
+    render_use_stamp_camera             = bpy.props.BoolProperty(default=False)
+    render_use_stamp_date               = bpy.props.BoolProperty(default=True)
+    render_use_stamp_filename           = bpy.props.BoolProperty(default=False)
+    render_use_stamp_frame              = bpy.props.BoolProperty(default=True)
+    render_use_stamp_lens               = bpy.props.BoolProperty(default=False)
+    render_use_stamp_marker             = bpy.props.BoolProperty(default=False)
+    render_use_stamp_note               = bpy.props.BoolProperty(default=True)
+    render_use_stamp_render_time        = bpy.props.BoolProperty(default=False)
+    render_use_stamp_scene              = bpy.props.BoolProperty(default=False)
+    render_use_stamp_sequencer_strip    = bpy.props.BoolProperty(default=False)
+    render_use_stamp_time               = bpy.props.BoolProperty(default=False)
+    render_use_simplify                 = bpy.props.BoolProperty(default=False)
+    render_use_antialiasing             = bpy.props.BoolProperty(default=False)
+
+    render_stamp_note_text              = bpy.props.StringProperty(\
+        name='Stamp',
+        description="Template for stamp note, %(user)s substituted to user name,"\
+            +" %(path)s to blendfile's name",
+        default='%(user)s | %(path)s')
+    render_filepath                     = bpy.props.StringProperty(\
+        name='Folder',
+        description="Folder name to substitute for blendfile's folder.",
+        default='opengl_render')
+    image_file_format                   = bpy.props.StringProperty(default='H264')
+    ffmpeg_format                       = bpy.props.StringProperty(default='QUICKTIME')
+    ffmpeg_codec                        = bpy.props.StringProperty(default='H264')
+    ffmpeg_audio_codec                  = bpy.props.StringProperty(default='MP3')
+
+    render_stamp_font_size              = bpy.props.IntProperty(default=20)
+    render_resolution_percentage        = bpy.props.IntProperty(default=100)
+    render_resolution_x                 = bpy.props.IntProperty()
+    render_resolution_y                 = bpy.props.IntProperty()
+    ffmpeg_video_bitrate                = bpy.props.IntProperty(default=6000)
+
+    render_stamp_background             = bpy.props.FloatVectorProperty(subtype='COLOR', size=4,
+                                                                        default=(0,0,0,.5))
+
+class OHA_RenderOpenGLProps(bpy.types.PropertyGroup):
+    restored = bpy.props.BoolProperty(default=True)
+
+    temp = bpy.props.PointerProperty(type = OHA_RenderOpenGLSettings)
+    load = bpy.props.PointerProperty(type = OHA_RenderOpenGLSettings)
+
 # ======================================================================
 # ============================== Operators =============================
 # ======================================================================
 
+class RENDER_OT_oha_render_opengl_animation(bpy.types.Operator):
+    """OpenGL render active viewport."""
+    bl_idname = 'render.oha_opengl'
+    bl_label = 'OHA OpenGL Render Animation'
+    bl_options = {'REGISTER'}
+
+    _timer = None
+    _render_thread = None
+
+    # Fungsi modifikasi setting render.
+    def temp_settings(self, context):
+        space = context.space_data
+        scene = context.scene
+        render = scene.render
+        image = render.image_settings
+        ffmpeg = render.ffmpeg
+        load = scene.oha_opengl_props.load
+
+        # Setting render dan FFMPEG menggunakan nilai default yang
+        # ditentukan dalam kelas OHA_RenderOpenGLProps, kecuali yang
+        # diatur manual dalam kode setelah ini.
+        for key in render_static_keys:
+            setattr(render, key, getattr(load, 'render_'+key))
+        for key in ffmpeg_settings_keys:
+            setattr(ffmpeg, key, getattr(load, 'ffmpeg_'+key))
+
+        # Nama folder output didapat dengan mengganti folder file
+        # .blend terbuka dengan apapun yang ditentukan pengguna. Nama
+        # file output didapat dengan menghapus ekstensi file .blend
+        # terbuka.
+        blendpath = context.blend_data.filepath
+        safechars = '_-.()' + string.digits + string.ascii_letters
+        base_folder = ''.join(c for c in load.render_filepath if c in safechars)
+        if blendpath:
+            blenddir, blendfile = os.path.split(blendpath)
+            blenddir0, blenddir1 = os.path.split(blenddir)
+            if blenddir1:
+                format_ext_dict = { "MPEG1" : '.mpg',
+                                    "MPEG2" : '.mp2',
+                                    "MPEG4" : '.mp4',
+                                    "AVI" : '.avi',
+                                    "QUICKTIME" : '.mov',
+                                    "DV" : '.dv',
+                                    "H264" : '.mp4',
+                                    "XVID" : '.avi',
+                                    "OGG" : '.ogg',
+                                    "MKV" : '.mkv',
+                                    "FLASH" : '.flv',
+                                    "WAV" : '.wav',
+                                    "MP3" : '.mp3'}
+                renderfile = os.path.splitext(blendfile)[0] + format_ext_dict.get(ffmpeg.format)
+                render.filepath = os.path.join(blenddir0, base_folder,
+                                               renderfile)
+        render.stamp_note_text = load.render_stamp_note_text\
+            % dict(user=getpass.getuser(),
+                   path=bpy.path.basename(blendpath) if blendpath\
+                       else "*unsaved*")
+
+        # Only Render hanya berlaku jika area jendela di mana operator
+        # ini dijalankan adalah 3D View.
+        if space.type == 'VIEW_3D':
+            space.show_only_render = load.space_show_only_render
+        # Tentukan format video, agar setting FFMPEG terpakai.
+        image.file_format = load.image_file_format
+        # Codec H.264 hanya dapat memproses video dengan resolusi
+        # kelipatan dua.
+        for key in ['resolution_x', 'resolution_y']:
+            res = getattr(render, key)
+            if res % 2 != 0:
+                setattr(render, key, res + 1)
+
+    def _init_render_thread(self):
+        self._render_thread = threading.Thread(
+            target=bpy.ops.render.opengl,
+            args=['INVOKE_DEFAULT'],
+            kwargs={'animation':True, 'view_context':True})
+
+    def _check_render_thread(self, context):
+        if self._render_thread.is_alive():
+            return {'PASS_THROUGH'}
+
+        bpy.ops.render.oha_opengl_settings(save=False)
+
+        return {'FINISHED'}
+
+    def cancel(self, context):
+        context.window_manager.event_timer_remove(self._timer)
+        
+        return {'CANCELLED'}
+
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            return self.check_render_thread(context)
+
+        return {'PASS_THROUGH'}
+
+    def execute(self, context):
+        wm = context.window_manager
+
+        bpy.ops.render.oha_opengl_settings(save=True)
+        self.temp_settings(context)
+
+        bpy.ops.render.opengl('INVOKE_DEFAULT', animation=True, view_context=True)
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        return self.execute(context)
+
+class RENDER_OT_oha_render_opengl_animation_settings(bpy.types.Operator):
+    """Return to previous render settings."""
+    bl_idname = 'render.oha_opengl_settings'
+    bl_label = 'Restore Render Settings'
+    bl_options = {'REGISTER'}
+
+    save = bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
+
+    def save_settings(self, context):
+        scene = context.scene
+        space = context.space_data
+        props = context.scene.oha_opengl_props
+        temp = props.temp
+
+        if not props.restored:
+            return {'CANCELLED'}
+
+        if space.type == 'VIEW_3D':
+            for key in space_settings_keys:
+                setattr(temp, 'space_'+key, getattr(space, key))
+        for key in render_settings_keys:
+            setattr(temp, 'render_'+key, getattr(scene.render, key))
+        for key in image_settings_keys:
+            setattr(temp, 'image_'+key, getattr(scene.render.image_settings, key))
+        for key in ffmpeg_settings_keys:
+            setattr(temp, 'ffmpeg_'+key, getattr(scene.render.ffmpeg, key))
+
+        props.restored = False
+
+        return {'FINISHED'}
+
+    def restore_settings(self, context):
+        scene = context.scene
+        space = context.space_data
+        props = context.scene.oha_opengl_props
+        temp = props.temp
+
+        if props.restored:
+            return {'CANCELLED'}
+
+        if space.type == 'VIEW_3D':
+            for key in space_settings_keys:
+                setattr(space, key, getattr(temp, 'space_'+key))
+        for key in render_settings_keys:
+            setattr(scene.render, key, getattr(temp, 'render_'+key))
+        for key in image_settings_keys:
+            setattr(scene.render.image_settings, key, getattr(temp, 'image_'+key))
+        for key in ffmpeg_settings_keys:
+            setattr(scene.render.ffmpeg, key, getattr(temp, 'ffmpeg_'+key))
+
+        props.restored = True
+
+        return {'FINISHED'}
+
+    def execute(self, context):
+        if self.save:
+            return self.save_settings(context)
+        else:
+            return self.restore_settings(context)
+
+space_settings_keys = [
+    'show_only_render']
+render_settings_keys = frozenset([
+    'use_stamp', 'use_stamp_camera', 'use_stamp_date', 'use_stamp_filename',
+    'use_stamp_frame', 'use_stamp_lens', 'use_stamp_marker',
+    'use_stamp_note', 'use_stamp_render_time', 'use_stamp_scene',
+    'use_stamp_sequencer_strip', 'use_stamp_time', 'use_simplify',
+    'stamp_note_text', 'stamp_background', 'stamp_font_size',
+    'resolution_percentage', 'resolution_x', 'resolution_y',
+    'use_antialiasing', 'filepath'])
+render_static_keys = render_settings_keys\
+    - set(['filepath', 'stamp_note_text',
+           'resolution_x', 'resolution_y'])
+image_settings_keys = [
+    'file_format']
+ffmpeg_settings_keys = [
+    'format', 'codec', 'audio_codec', 'video_bitrate']
+
+class RENDER_OT_oha_render_qc_preset_add(AddPresetBase, bpy.types.Operator):
+    """Add a new preset containing all indicated settings."""
+    bl_idname = 'render.oha_render_qc_preset_add'
+    bl_label = 'Add Render QC Preset'
+    bl_options = {'REGISTER', 'UNDO'}
+    preset_menu = 'RENDER_MT_oha_qc_presets'
+    preset_subdir = 'oha_render_qc'
+
+    preset_defines = [
+        "scene  = bpy.context.scene",
+        "render = bpy.context.scene.render",
+        "image  = bpy.context.scene.render.image_settings",
+        "ffmpeg = bpy.context.scene.render.ffmpeg"
+        ]
+
+    preset_values = [
+        "scene.use_preview_range",
+        "render.engine",                        "render.antialiasing_samples",
+        "render.use_stamp",                     "render.use_stamp_marker",
+        "render.use_stamp_camera",              "render.use_stamp_note",
+        "render.use_stamp_date",                "render.use_stamp_render_time",
+        "render.use_stamp_filename",            "render.use_stamp_scene",
+        "render.use_stamp_frame",               "render.use_stamp_sequencer_strip",
+        "render.use_stamp_lens",                "render.use_stamp_time",        
+        "render.use_simplify",                  "render.use_antialiasing",
+        "render.use_freestyle",
+        "render.stamp_note_text",               "render.resolution_percentage",
+        "render.stamp_background",              "render.resolution_x",         
+        "render.stamp_font_size",               "render.resolution_y",
+        "image.file_format",                    "ffmpeg.format",
+        "ffmpeg.codec",                         "ffmpeg.audio_codec",
+        "ffmpeg.video_bitrate",                 "ffmpeg.audio_bitrate",
+        "ffmpeg.audio_channels",                "ffmpeg.audio_volume",
+        "ffmpeg.audio_mixrate",                 "ffmpeg.use_lossless_output",
+        "ffmpeg.maxrate",                       "ffmpeg.minrate",
+        "ffmpeg.muxrate",                       "ffmpeg.packetsize",
+        "ffmpeg.gopsize",                       "ffmpeg.buffersize",
+        ]
+
+    @staticmethod
+    def as_filename(name):  # could reuse for other presets
+        for char in " !@#$%^&*(){}:\";'[]<>,.\\/?":
+            name = name.replace(char, '_')
+        return name.strip()
+
+class RENDER_OT_oha_preview_preset_add(AddPresetBase, bpy.types.Operator):
+    bl_idname = 'render.oha_preview_preset_add'
+    bl_label = 'Add Preview Preset'
+    bl_options = {'REGISTER', 'UNDO'}
+    preset_menu = 'RENDER_MT_oha_preview_presets'
+    preset_subdir = 'oha_preview'
+
+    preset_defines = [
+        "load = bpy.context.scene.oha_opengl_props.load"
+        ]
+
+    preset_values = [
+        "load.render_use_stamp",
+        "load.render_use_stamp_camera",
+        "load.render_use_stamp_date",
+        "load.render_use_stamp_filename",
+        "load.render_use_stamp_frame",
+        "load.render_use_stamp_lens",
+        "load.render_use_stamp_marker",
+        "load.render_use_stamp_note",
+        "load.render_use_stamp_render_time",
+        "load.render_use_stamp_scene",
+        "load.render_use_stamp_sequencer_strip",
+        "load.render_use_stamp_time",
+        "load.render_use_simplify",
+        "load.render_use_antialiasing",
+
+        "load.render_stamp_note_text",
+        "load.render_filepath",
+        "load.image_file_format",
+        "load.ffmpeg_format",
+        "load.ffmpeg_codec",
+        "load.ffmpeg_audio_codec",
+
+        "load.render_stamp_font_size",
+        "load.ffmpeg_video_bitrate",
+
+        "load.render_stamp_background"
+        ]
+
+    def dump_settings(self, context):
+        scene  = bpy.context.scene
+        render = bpy.context.scene.render
+        image  = bpy.context.scene.render.image_settings
+        ffmpeg = bpy.context.scene.render.ffmpeg
+        load = bpy.context.scene.oha_opengl_props.load
+
+        # Resolution_Percentage must stay 100%
+        render_keys = render_static_keys - set(['resolution_percentage'])
+        for key in render_keys:
+            setattr(load, 'render_'+key, getattr(scene.render, key))
+        for key in image_settings_keys:
+            setattr(load, 'image_'+key, getattr(scene.render.image_settings, key))
+        for key in ffmpeg_settings_keys:
+            setattr(load, 'ffmpeg_'+key, getattr(scene.render.ffmpeg, key))
+
+    def invoke(self, context, event):
+        if not self.remove_active:
+            self.dump_settings(context)
+        return super().invoke(context, event)
+
 # Uses bpy.ops.nla.bake as starting point.
-class oha_FCurveBakeAction(bpy.types.Operator):
+class GRAPH_OT_oha_fcurve_bake_action(bpy.types.Operator):
     """Bake object/pose loc/scale/rotation animation to a new action"""
     bl_idname = 'graph.oha_fcurve_bake_action'
     bl_label = 'Bake Action'
@@ -181,7 +538,7 @@ class oha_FCurveBakeAction(bpy.types.Operator):
     
         return context.window_manager.invoke_props_dialog(self)
 
-class oha_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
+class GRAPH_OT_oha_fcurve_add_cycle_modifier(bpy.types.Operator):
     """Add cycle modifier to all available f-curve channels"""
     bl_idname = 'graph.oha_fcurve_add_cycle_modifier'
     bl_label = 'Add Cycle Modifier'
@@ -278,7 +635,7 @@ class oha_FCurveAddCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
-class GRAPH_OT_oha_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
+class GRAPH_OT_oha_fcurve_remove_cycle_modifier(bpy.types.Operator):
     """Removes cycle modifier from all available f-curve channels"""
     bl_idname = 'graph.oha_fcurve_remove_cycle_modifier'
     bl_label = 'Remove Cycle Modifier'
@@ -334,7 +691,7 @@ class GRAPH_OT_oha_FCurveRemoveCycleModifierToAllChannels(bpy.types.Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
-class VIEW3D_OT_oha_ObjectSnapToPrevKeyframe(bpy.types.Operator):
+class VIEW3D_OT_oha_object_snap_to_prev_keyframe(bpy.types.Operator):
     """Snap active object/bone to selected object."""
     bl_idname = 'object.oha_snap_to_prev_keyframe'
     bl_label = 'Snap to Previous Keyframe'
@@ -354,7 +711,7 @@ class VIEW3D_OT_oha_ObjectSnapToPrevKeyframe(bpy.types.Operator):
         print('*' * 50)
         return {'FINISHED'}
 
-class VIEW3D_OT_oha_ObjectSnapToObject(bpy.types.Operator):
+class VIEW3D_OT_oha_object_snap_to_object(bpy.types.Operator):
     """Snap active object/bone to selected object/bone."""
     bl_idname = 'object.oha_snap_to_object'
     bl_label = 'Snap to Object'
@@ -402,24 +759,23 @@ class VIEW3D_OT_oha_ObjectSnapToObject(bpy.types.Operator):
         if context.mode == 'POSE':
             # l2w = lObjw * (l2l * l1b * l0b)
             # l2l = (l2w * lObjw.inv) * l1b.inv * l0b.inv
-            # mat = active.matrix_world.inverted() * mat
+            mat = active.matrix_world.inverted() * mat
 
-            if self.snap_pbone_rotation_scale:
-                pbone = context.active_pose_bone
-                for p in pbone.parent_recursive:
-                    mat = p.matrix_basis * mat
-                mat[3][0] = mat[3][1] = mat[3][2] = 0
-                pbone.matrix = mat
+            pbone = context.active_pose_bone
+            for p in pbone.parent_recursive:
+                mat = p.matrix_basis * mat
+            mat[3][0] = mat[3][1] = mat[3][2] = 0
+            pbone.matrix = mat
 
-            cursor_old = context.scene.cursor_location.copy()
+            # cursor_old = context.scene.cursor_location.copy()
             
-            context.scene.objects.active = target
-            bpy.ops.view3d.snap_cursor_to_active()
+            # context.scene.objects.active = target
+            # bpy.ops.view3d.snap_cursor_to_active()
 
-            context.scene.objects.active = active
-            bpy.ops.view3d.snap_selected_to_cursor()
+            # context.scene.objects.active = active
+            # bpy.ops.view3d.snap_selected_to_cursor()
 
-            context.scene.cursor_location = cursor_old
+            # context.scene.cursor_location = cursor_old
 
         elif target.type == 'ARMATURE' and target.data.bones.active != None:
             target_bone = target.pose.bones.get(target.data.bones.active.name)
@@ -449,7 +805,7 @@ class VIEW3D_OT_oha_ObjectSnapToObject(bpy.types.Operator):
 
         return {'FINISHED'}
 
-class SEQUENCER_OT_oha_MovieStripAdd(bpy.types.Operator):
+class SEQUENCER_OT_oha_movie_strip_add(bpy.types.Operator):
     """Add one or more movie strips, each file's audio and video strips automatically grouped as one metastrip."""
     bl_idname = 'sequencer.oha_grouped_movie_strip_add'
     bl_label = 'Add Grouped Movie Strips'
@@ -511,7 +867,132 @@ class SEQUENCER_OT_oha_MovieStripAdd(bpy.types.Operator):
 # =========================== User Interface ===========================
 # ======================================================================
 
-class GRAPH_PT_oha_AnimationToolsFCurvePanel(bpy.types.Panel):
+class RENDER_MT_oha_qc_presets(bpy.types.Menu):
+    '''Presets for final render settings.'''
+    bl_label = "Render Presets"
+    bl_idname = "RENDER_MT_oha_qc_presets"
+    preset_subdir = "oha_render_qc"
+    preset_operator = "script.execute_preset"
+    
+    # Minimally modified from scripts/modules/bpy_types.py
+    def path_menu(self, searchpaths, operator,
+                  props_default={}, filter_ext=None):
+
+        layout = self.layout
+        # hard coded to set the operators 'filepath' to the filename.
+
+        import os
+        import bpy.utils
+
+        layout = self.layout
+
+        if not searchpaths:
+            layout.label("* Missing Paths *")
+
+        # collect paths
+        files = []
+        for directory in searchpaths:
+            files.extend([(f, os.path.join(directory, f))
+                          for f in os.listdir(directory)
+                          if (not f.startswith("."))
+                          if ((filter_ext is None) or
+                              (filter_ext(os.path.splitext(f)[1])))
+                          ])
+
+        files.sort()
+
+        for f, filepath in files:
+            props = layout.operator(operator,
+                                    text=bpy.path.display_name(f),
+                                    translate=False)
+
+            for attr, value in props_default.items():
+                setattr(props, attr, value)
+
+            props.filepath = filepath
+            props.menu_idname = self.bl_idname
+
+    draw = bpy.types.Menu.draw_preset
+    # def draw(self, context):
+    #     bpy.types.Menu.draw_preset(self, context)
+
+class RENDER_MT_oha_preview_presets(bpy.types.Menu):
+    '''Presets for preview render settings.'''
+    bl_label = "Preview Presets"
+    bl_idname = "RENDER_MT_oha_preview_presets"
+    preset_subdir = "oha_preview"
+    preset_operator = "script.execute_preset"
+
+    # Minimally modified from scripts/modules/bpy_types.py
+    def path_menu(self, searchpaths, operator,
+                  props_default={}, filter_ext=None):
+
+        layout = self.layout
+        # hard coded to set the operators 'filepath' to the filename.
+
+        import os
+        import bpy.utils
+
+        layout = self.layout
+
+        if not searchpaths:
+            layout.label("* Missing Paths *")
+
+        # collect paths
+        files = []
+        for directory in searchpaths:
+            files.extend([(f, os.path.join(directory, f))
+                          for f in os.listdir(directory)
+                          if (not f.startswith("."))
+                          if ((filter_ext is None) or
+                              (filter_ext(os.path.splitext(f)[1])))
+                          ])
+
+        files.sort()
+
+        for f, filepath in files:
+            props = layout.operator(operator,
+                                    text=bpy.path.display_name(f),
+                                    translate=False)
+
+            for attr, value in props_default.items():
+                setattr(props, attr, value)
+
+            props.filepath = filepath
+            props.menu_idname = self.bl_idname
+
+    draw = bpy.types.Menu.draw_preset
+        
+class RENDER_PT_oha_render_panel(bpy.types.Panel):
+    bl_label = 'OHA Render Settings'
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = 'render'
+
+    def draw(self, context):
+        layout = self.layout
+
+        col = layout.column_flow(align=True)
+        col.label('Presets:')
+        row = col.row(align=True)
+        row.menu("RENDER_MT_oha_qc_presets",
+                 text=bpy.types.RENDER_MT_oha_qc_presets.bl_label)
+        row.operator("render.oha_render_qc_preset_add", text="", icon='ZOOMIN')
+        row.operator("render.oha_render_qc_preset_add", text="", icon='ZOOMOUT').remove_active = True
+
+        row = col.row(align=True)
+        row.menu("RENDER_MT_oha_preview_presets",
+                 text=bpy.types.RENDER_MT_oha_preview_presets.bl_label)
+        row.operator("render.oha_preview_preset_add", text="", icon='ZOOMIN')
+        row.operator("render.oha_preview_preset_add", text="", icon='ZOOMOUT').remove_active = True
+
+        box = layout.box()
+        col = box.column_flow(align=True)
+        col.label('Preview Settings:')
+        col.prop(context.scene.oha_opengl_props.load, 'render_filepath')
+        col.prop(context.scene.oha_opengl_props.load, 'render_stamp_note_text')
+
+class GRAPH_PT_oha_animation_tools(bpy.types.Panel):
     bl_label = 'OHA Animation Tools'
     bl_space_type = 'GRAPH_EDITOR'
     bl_region_type = 'UI'
@@ -532,7 +1013,7 @@ class GRAPH_PT_oha_AnimationToolsFCurvePanel(bpy.types.Panel):
         row = layout.row(align=True)
         row.operator('graph.oha_fcurve_bake_action')
 
-class VIEW3D_PT_oha_AnimationToolsPanel(bpy.types.Panel):
+class VIEW3D_PT_oha_animation_tools(bpy.types.Panel):
     bl_label = 'OHA Animation Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -553,7 +1034,7 @@ class VIEW3D_PT_oha_AnimationToolsPanel(bpy.types.Panel):
         col = layout.column(align=True)
         col.operator('object.oha_snap_to_object')
 
-class SEQUENCER_PT_oha_AnimationToolsPanel(bpy.types.Panel):
+class SEQUENCER_PT_oha_animation_tools(bpy.types.Panel):
     bl_label = 'OHA Animation Tools'
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_region_type = 'UI'
@@ -568,11 +1049,26 @@ class SEQUENCER_PT_oha_AnimationToolsPanel(bpy.types.Panel):
         col = layout.column(align=True)
         col.operator('sequencer.oha_grouped_movie_strip_add')
 
+def render_view3d_headerbutton(self, context):
+    layout = self.layout
+    props = context.scene.oha_opengl_props
+
+    row = layout.row(align=True)
+    row.operator('render.oha_opengl', icon='RENDER_ANIMATION', text='Preview')
+    row.operator('render.oha_opengl_settings', icon='DISK_DRIVE'
+                 if props.restored else 'LOAD_FACTORY', text='')
+
 def register():
     bpy.utils.register_module(__name__)
+    bpy.types.VIEW3D_HT_header.append(render_view3d_headerbutton)
+    bpy.types.Scene.oha_opengl_props = bpy.props.PointerProperty(
+        type = OHA_RenderOpenGLProps,
+        options = {'HIDDEN', 'SKIP_SAVE'})
 
 def unregister():
     bpy.utils.unregister_module(__name__)
+    bpy.types.VIEW3D_HT_header.remove(render_view3d_headerbutton)
+    del bpy.types.Scene.oha_opengl_props
 
 if __name__ == "__main__":
     register()
