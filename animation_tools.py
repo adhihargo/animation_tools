@@ -5,9 +5,12 @@ import bpy
 import getpass
 import os
 import string
+import threading
 from mathutils import Matrix, Vector
 from bpy.app.handlers import persistent
 from bl_operators.presets import AddPresetBase, ExecutePreset
+from bpy.props import BoolProperty, IntProperty, PointerProperty,\
+    StringProperty, FloatVectorProperty, EnumProperty, CollectionProperty
 
 bl_info = {
     "name": "OHA Animation Tools",
@@ -134,51 +137,69 @@ def bake_action(obj, frame_start, frame_end, only_selected, only_visible):
 # Seluruh kode modifikasi setting render ada pada fungsi
 # "temp_settings" dalam operator "render.oha_opengl" persis di bawah
 # definisi kelas ini.
-class OHA_RenderOpenGLSettings(bpy.types.PropertyGroup):
-    space_show_only_render              = bpy.props.BoolProperty(default=True)
-    render_use_stamp                    = bpy.props.BoolProperty(default=True)
-    render_use_stamp_camera             = bpy.props.BoolProperty(default=False)
-    render_use_stamp_date               = bpy.props.BoolProperty(default=True)
-    render_use_stamp_filename           = bpy.props.BoolProperty(default=False)
-    render_use_stamp_frame              = bpy.props.BoolProperty(default=True)
-    render_use_stamp_lens               = bpy.props.BoolProperty(default=False)
-    render_use_stamp_marker             = bpy.props.BoolProperty(default=False)
-    render_use_stamp_note               = bpy.props.BoolProperty(default=True)
-    render_use_stamp_render_time        = bpy.props.BoolProperty(default=False)
-    render_use_stamp_scene              = bpy.props.BoolProperty(default=False)
-    render_use_stamp_sequencer_strip    = bpy.props.BoolProperty(default=False)
-    render_use_stamp_time               = bpy.props.BoolProperty(default=False)
-    render_use_simplify                 = bpy.props.BoolProperty(default=False)
-    render_use_antialiasing             = bpy.props.BoolProperty(default=False)
+class OHA_RenderOpenGL_Settings(bpy.types.PropertyGroup):
+    space_show_only_render              = BoolProperty(default=True)
+    render_use_stamp                    = BoolProperty(default=True)
+    render_use_stamp_camera             = BoolProperty(default=False)
+    render_use_stamp_date               = BoolProperty(default=True)
+    render_use_stamp_filename           = BoolProperty(default=False)
+    render_use_stamp_frame              = BoolProperty(default=True)
+    render_use_stamp_lens               = BoolProperty(default=False)
+    render_use_stamp_marker             = BoolProperty(default=False)
+    render_use_stamp_note               = BoolProperty(default=True)
+    render_use_stamp_render_time        = BoolProperty(default=False)
+    render_use_stamp_scene              = BoolProperty(default=False)
+    render_use_stamp_sequencer_strip    = BoolProperty(default=False)
+    render_use_stamp_time               = BoolProperty(default=False)
+    render_use_simplify                 = BoolProperty(default=False)
+    render_use_antialiasing             = BoolProperty(default=False)
 
-    render_stamp_note_text              = bpy.props.StringProperty(\
+    render_stamp_note_text              = StringProperty(\
         name='Stamp',
         description="Template for stamp note, %(user)s substituted to user name,"\
             +" %(path)s to blendfile's name",
         default='%(user)s | %(path)s')
-    render_filepath                     = bpy.props.StringProperty(\
+    render_filepath                     = StringProperty(\
         name='Folder',
         description="Folder name to substitute for blendfile's folder.",
         default='opengl_render')
-    image_file_format                   = bpy.props.StringProperty(default='H264')
-    ffmpeg_format                       = bpy.props.StringProperty(default='QUICKTIME')
-    ffmpeg_codec                        = bpy.props.StringProperty(default='H264')
-    ffmpeg_audio_codec                  = bpy.props.StringProperty(default='MP3')
+    image_file_format                   = StringProperty(default='H264')
+    ffmpeg_format                       = StringProperty(default='QUICKTIME')
+    ffmpeg_codec                        = StringProperty(default='H264')
+    ffmpeg_audio_codec                  = StringProperty(default='MP3')
 
-    render_stamp_font_size              = bpy.props.IntProperty(default=20)
-    render_resolution_percentage        = bpy.props.IntProperty(default=100)
-    render_resolution_x                 = bpy.props.IntProperty()
-    render_resolution_y                 = bpy.props.IntProperty()
-    ffmpeg_video_bitrate                = bpy.props.IntProperty(default=6000)
+    render_stamp_font_size              = IntProperty(default=20)
+    render_resolution_percentage        = IntProperty(default=100)
+    render_resolution_x                 = IntProperty()
+    render_resolution_y                 = IntProperty()
+    ffmpeg_video_bitrate                = IntProperty(default=6000)
 
-    render_stamp_background             = bpy.props.FloatVectorProperty(subtype='COLOR', size=4,
-                                                                        default=(0,0,0,.5))
+    render_stamp_background             = FloatVectorProperty(subtype='COLOR', size=4,
+                                                              default=(0,0,0,.5))
 
-class OHA_RenderOpenGLProps(bpy.types.PropertyGroup):
-    restored = bpy.props.BoolProperty(default=True)
+class OHA_RenderOpenGL_Props(bpy.types.PropertyGroup):
+    restored = BoolProperty(default=True)
 
-    temp = bpy.props.PointerProperty(type = OHA_RenderOpenGLSettings)
-    load = bpy.props.PointerProperty(type = OHA_RenderOpenGLSettings)
+    temp = PointerProperty(type = OHA_RenderOpenGL_Settings)
+    load = PointerProperty(type = OHA_RenderOpenGL_Settings)
+
+class OHA_QuickLink_BlendFile(bpy.types.PropertyGroup):
+    name = StringProperty()
+    full_path = StringProperty(
+        subtype="FILE_PATH")
+
+def update_root_folder(self, context):
+    bpy.ops.scene.oha_quicklink_populate()
+
+class OHA_QuickLink_Props(bpy.types.PropertyGroup):
+    root_folder = StringProperty(
+        name="Root Folder",
+        description="Only .blend files two levels below this folder will be listed.",
+        subtype="DIR_PATH",
+        update=update_root_folder)
+    blend_files = CollectionProperty(
+        type=OHA_QuickLink_BlendFile)
+    blend_files_index = IntProperty(default=0)
 
 # ======================================================================
 # ============================== Operators =============================
@@ -191,7 +212,6 @@ class RENDER_OT_oha_render_opengl_animation(bpy.types.Operator):
     bl_options = {'REGISTER'}
 
     _timer = None
-    _render_thread = None
 
     # Fungsi modifikasi setting render.
     def temp_settings(self, context):
@@ -203,7 +223,7 @@ class RENDER_OT_oha_render_opengl_animation(bpy.types.Operator):
         load = scene.oha_opengl_props.load
 
         # Setting render dan FFMPEG menggunakan nilai default yang
-        # ditentukan dalam kelas OHA_RenderOpenGLProps, kecuali yang
+        # ditentukan dalam kelas OHA_RenderOpenGL_Props, kecuali yang
         # diatur manual dalam kode setelah ini.
         for key in render_static_keys:
             setattr(render, key, getattr(load, 'render_'+key))
@@ -255,16 +275,7 @@ class RENDER_OT_oha_render_opengl_animation(bpy.types.Operator):
             if res % 2 != 0:
                 setattr(render, key, res + 1)
 
-    def _init_render_thread(self):
-        self._render_thread = threading.Thread(
-            target=bpy.ops.render.opengl,
-            args=['INVOKE_DEFAULT'],
-            kwargs={'animation':True, 'view_context':True})
-
     def _check_render_thread(self, context):
-        if self._render_thread.is_alive():
-            return {'PASS_THROUGH'}
-
         bpy.ops.render.oha_opengl_settings(save=False)
 
         return {'FINISHED'}
@@ -299,7 +310,7 @@ class RENDER_OT_oha_render_opengl_animation_settings(bpy.types.Operator):
     bl_label = 'Restore Render Settings'
     bl_options = {'REGISTER'}
 
-    save = bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    save = BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
 
     def save_settings(self, context):
         scene = context.scene
@@ -484,27 +495,27 @@ class GRAPH_OT_oha_fcurve_bake_action(bpy.types.Operator):
     bl_label = 'Bake Action'
     bl_options = {'REGISTER', 'UNDO'}
 
-    frame_start = bpy.props.IntProperty(
+    frame_start = IntProperty(
         name="Start Frame",
         description="Start frame for baking",
         min=0, max=300000,
         default=1,
         )
 
-    frame_end = bpy.props.IntProperty(
+    frame_end = IntProperty(
         name="End Frame",
         description="End frame for baking",
         min=1, max=300000,
         default=250,
         )
 
-    only_selected = bpy.props.BoolProperty(
+    only_selected = BoolProperty(
         name="Only Selected",
         description="Only key selected bones",
         default=True,
         )
 
-    only_visible = bpy.props.BoolProperty(
+    only_visible = BoolProperty(
         name="Only Visible",
         description="Only key visible f-curve channels",
         default=False,
@@ -544,13 +555,13 @@ class GRAPH_OT_oha_fcurve_add_cycle_modifier(bpy.types.Operator):
     bl_label = 'Add Cycle Modifier'
     bl_options = {'REGISTER', 'UNDO'}
 
-    cycles_before = bpy.props.IntProperty(
+    cycles_before = IntProperty(
         name = 'Cycles Before')
 
-    cycles_after = bpy.props.IntProperty(
+    cycles_after = IntProperty(
         name = 'Cycles After')
 
-    mode_before = bpy.props.EnumProperty(
+    mode_before = EnumProperty(
         name = 'Mode Before',
         items = [('NONE', 'No Cycles', ''),
                  ('REPEAT', 'Repeat Motion', ''),
@@ -559,7 +570,7 @@ class GRAPH_OT_oha_fcurve_add_cycle_modifier(bpy.types.Operator):
                  ],
         default = 'REPEAT_OFFSET')
 
-    mode_after = bpy.props.EnumProperty(
+    mode_after = EnumProperty(
         name = 'Mode After',
         items = [('NONE', 'No Cycles', ''),
                  ('REPEAT', 'Repeat Motion', ''),
@@ -568,13 +579,13 @@ class GRAPH_OT_oha_fcurve_add_cycle_modifier(bpy.types.Operator):
                  ],
         default = 'REPEAT_OFFSET')
 
-    only_selected = bpy.props.BoolProperty(
+    only_selected = BoolProperty(
         name="Only Selected",
         description="Only key selected bones",
         default=True,
         )
 
-    only_visible = bpy.props.BoolProperty(
+    only_visible = BoolProperty(
         name="Only Visible",
         description="Only key visible f-curve channels",
         default=False,
@@ -641,13 +652,13 @@ class GRAPH_OT_oha_fcurve_remove_cycle_modifier(bpy.types.Operator):
     bl_label = 'Remove Cycle Modifier'
     bl_options = {'REGISTER', 'UNDO'}
 
-    only_selected = bpy.props.BoolProperty(
+    only_selected = BoolProperty(
         name="Only Selected",
         description="Only key selected bones",
         default=True,
         )
 
-    only_visible = bpy.props.BoolProperty(
+    only_visible = BoolProperty(
         name="Only Visible",
         description="Only key visible f-curve channels",
         default=False,
@@ -717,19 +728,19 @@ class VIEW3D_OT_oha_object_snap_to_object(bpy.types.Operator):
     bl_label = 'Snap to Object'
     bl_options = {'REGISTER', 'UNDO'}
 
-    snap_rotation = bpy.props.BoolProperty(
+    snap_rotation = BoolProperty(
         name="Rotation",
         description="Also adjusting rotation to reference object.",
         default=True,
         )
 
-    snap_scale = bpy.props.BoolProperty(
+    snap_scale = BoolProperty(
         name="Scale",
         description="Also adjusting scale to reference object.",
         default=False,
         )
 
-    snap_pbone_rotation_scale = bpy.props.BoolProperty(
+    snap_pbone_rotation_scale = BoolProperty(
         name="Rotation + Scale",
         description="Also adjusting rotation and scale to reference object.",
         default=False,
@@ -811,28 +822,28 @@ class SEQUENCER_OT_oha_movie_strip_add(bpy.types.Operator):
     bl_label = 'Add Grouped Movie Strips'
     bl_options = {'REGISTER', 'UNDO'}
 
-    files = bpy.props.CollectionProperty(
+    files = CollectionProperty(
         name="File Path",
         type=bpy.types.OperatorFileListElement)
-    directory = bpy.props.StringProperty(
+    directory = StringProperty(
         default='//', subtype='DIR_PATH',
         options={'HIDDEN'})
 
-    frame_start = bpy.props.IntProperty(
+    frame_start = IntProperty(
         subtype='UNSIGNED',
         options={'HIDDEN'})
-    filter_movie = bpy.props.BoolProperty(
+    filter_movie = BoolProperty(
         default=True,
         options={'HIDDEN'})
-    filter_folder = bpy.props.BoolProperty(
+    filter_folder = BoolProperty(
         default=True,
         options={'HIDDEN'})
 
-    channel = bpy.props.IntProperty(
+    channel = IntProperty(
         name='Channel',
         default=1,
         min=1,max=32)
-    consecutive = bpy.props.BoolProperty(
+    consecutive = BoolProperty(
         name='Consecutive Strips',
         description='Position all movie strips in the same channel, one after the other.',
         default=True
@@ -863,10 +874,71 @@ class SEQUENCER_OT_oha_movie_strip_add(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
+class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
+    """Populate list of .blend files within specified root folder."""
+    bl_idname = 'scene.oha_quicklink_populate'
+    bl_label = 'Populate Blendfile List'
+    bl_options = {'REGISTER'}
+
+    folder_list = []
+
+    @classmethod
+    def poll(self, context):
+        props = context.scene.oha_quicklink_props
+
+        return props.root_folder != '' and os.path.exists(props.root_folder)
+
+    def modal(self, context, event):
+        props = context.scene.oha_quicklink_props
+
+        if self.folder_list:
+            folder = self.folder_list.pop(0)
+            if not os.access(folder, os.R_OK):
+                return {'PASS_THROUGH'}
+
+            file_list = [os.path.join(folder, f)
+                         for f in os.listdir(folder)
+                         if os.path.isfile(os.path.join(folder, f))
+                         and f.endswith('.blend')]
+            for f in file_list:
+                item = props.blend_files.add()
+                item.name = os.path.basename(f)
+                item.full_path = f
+
+            return {'PASS_THROUGH'}
+
+        return {'FINISHED'}
+
+    def execute(self, context):
+        wm = context.window_manager
+        props = context.scene.oha_quicklink_props
+        root_folder = bpy.path.abspath(props.root_folder)
+
+        if not os.access(root_folder, os.R_OK):
+            return {'CANCELLED'}
+
+        props.blend_files.clear()
+
+        wm.modal_handler_add(self)
+        self.folder_list = [os.path.join(root_folder, f)
+                            for f in os.listdir(root_folder)
+                            if os.path.isdir(os.path.join(root_folder, f))]
+        
+        return {'RUNNING_MODAL'}
+
+    def invoke(self, context, event):
+        return self.execute(context)
+    
+
 # ======================================================================
 # =========================== User Interface ===========================
 # ======================================================================
 
+class SCENE_UL_oha_quicklink_blendfiles(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon,
+                  active_data, active_propname, index):
+        layout.label(text=item.name)
+
 class RENDER_MT_oha_qc_presets(bpy.types.Menu):
     '''Presets for final render settings.'''
     bl_label = "Render Presets"
@@ -1049,7 +1121,32 @@ class SEQUENCER_PT_oha_animation_tools(bpy.types.Panel):
         col = layout.column(align=True)
         col.operator('sequencer.oha_grouped_movie_strip_add')
 
-def render_view3d_headerbutton(self, context):
+class SCENE_PT_oha_quicklink(bpy.types.Panel):
+    bl_label = 'OHA Quick Link'
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = 'scene'
+
+    def draw(self, context):
+        scene = context.scene
+        props = scene.oha_quicklink_props
+        layout = self.layout
+
+        row = layout.row(align=True)
+        row.prop(props, "root_folder", text="")
+        row.operator("scene.oha_quicklink_populate",
+                     icon='FILE_REFRESH', text='')
+
+        col = layout.column(align=True)
+        col.template_list("SCENE_UL_oha_quicklink_blendfiles", "",
+                          props, "blend_files", props, "blend_files_index",
+                          rows=5)
+
+# ======================================================================
+# ========================= Auxiliary Functions ========================
+# ======================================================================
+
+def view3d_header_renderpreview(self, context):
     layout = self.layout
     props = context.scene.oha_opengl_props
 
@@ -1060,15 +1157,19 @@ def render_view3d_headerbutton(self, context):
 
 def register():
     bpy.utils.register_module(__name__)
-    bpy.types.VIEW3D_HT_header.append(render_view3d_headerbutton)
-    bpy.types.Scene.oha_opengl_props = bpy.props.PointerProperty(
-        type = OHA_RenderOpenGLProps,
+    bpy.types.VIEW3D_HT_header.append(view3d_header_renderpreview)
+    bpy.types.Scene.oha_opengl_props = PointerProperty(
+        type = OHA_RenderOpenGL_Props,
+        options = {'HIDDEN', 'SKIP_SAVE'})
+    bpy.types.Scene.oha_quicklink_props = PointerProperty(
+        type = OHA_QuickLink_Props,
         options = {'HIDDEN', 'SKIP_SAVE'})
 
 def unregister():
     bpy.utils.unregister_module(__name__)
-    bpy.types.VIEW3D_HT_header.remove(render_view3d_headerbutton)
+    bpy.types.VIEW3D_HT_header.remove(view3d_header_renderpreview)
     del bpy.types.Scene.oha_opengl_props
+    del bpy.types.Scene.oha_quicklink_props
 
 if __name__ == "__main__":
     register()
