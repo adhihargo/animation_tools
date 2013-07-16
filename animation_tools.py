@@ -184,12 +184,14 @@ class OHA_RenderOpenGL_Props(bpy.types.PropertyGroup):
     load = PointerProperty(type = OHA_RenderOpenGL_Settings)
 
 class OHA_QuickLink_BlendFile(bpy.types.PropertyGroup):
-    name = StringProperty()
-    full_path = StringProperty(
-        subtype="FILE_PATH")
+    name = StringProperty(
+        options = {'HIDDEN', 'SKIP_SAVE'})
+    file_path = StringProperty(
+        subtype="FILE_PATH",
+        options = {'HIDDEN', 'SKIP_SAVE'})
 
 def update_root_folder(self, context):
-    bpy.ops.scene.oha_quicklink_populate()
+    bpy.ops.scene.oha_quicklink_populate('INVOKE_DEFAULT')
 
 class OHA_QuickLink_Props(bpy.types.PropertyGroup):
     root_folder = StringProperty(
@@ -901,9 +903,11 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
                          if os.path.isfile(os.path.join(folder, f))
                          and f.endswith('.blend')]
             for f in file_list:
-                item = props.blend_files.add()
-                item.name = os.path.basename(f)
-                item.full_path = f
+                with bpy.data.libraries.load(f) as (data_from, data_to):
+                    for g in data_from.groups:
+                        item = props.blend_files.add()
+                        item.name = g
+                        item.file_path = f
 
             return {'PASS_THROUGH'}
 
@@ -918,17 +922,74 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
             return {'CANCELLED'}
 
         props.blend_files.clear()
+        self.folder_list.clear()
 
-        wm.modal_handler_add(self)
-        self.folder_list = [os.path.join(root_folder, f)
-                            for f in os.listdir(root_folder)
-                            if os.path.isdir(os.path.join(root_folder, f))]
+        folder0_list = [os.path.join(root_folder, f)
+                        for f in os.listdir(root_folder)
+                        if os.path.isdir(os.path.join(root_folder, f))
+                        and os.access(os.path.join(root_folder, f), os.R_OK)]
+
+        for folder in folder0_list:
+            self.folder_list.extend(
+                [os.path.join(folder, f)
+                 for f in os.listdir(folder)
+                 if os.path.isdir(os.path.join(folder, f))
+                 and os.access(os.path.join(folder, f), os.R_OK)])
+        self.folder_list.sort()
         
+        wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
         return self.execute(context)
     
+class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
+    """Link selected group into the scene, and create proxy."""
+    bl_idname = 'scene.oha_quicklink_makeproxy'
+    bl_label = 'Make Proxy'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        props = context.scene.oha_quicklink_props
+        return len(props.blend_files) > 0
+
+    def execute(self, context):
+        props = context.scene.oha_quicklink_props
+        file_item = props.blend_files[props.blend_files_index]
+
+        group_name = file_item.name
+        group_dirname, group_basename = os.path.split(file_item.file_path)
+
+        gd = dict(fullpath = file_item.file_path, basepath = group_basename,
+                  group = group_name, sep = os.sep)
+
+        group_fpath = "%(fullpath)s%(sep)sGroup%(sep)s%(group)s" % gd
+        group_dpath = "%(fullpath)s%(sep)sGroup%(sep)s" % gd
+
+        # with bpy.data.libraries.load(group_file) as (data_from, data_to):
+        #     data_to.groups = [group_name]
+
+        bpy.ops.wm.link_append(
+            filepath=group_fpath,
+            filename=group_name,
+            directory=group_dpath,
+            filemode=1,
+            link=True,
+            autoselect=False,
+            active_layer=True,
+            instance_groups=True,
+            relative_path=True)
+        rig_list = [o.name for o in bpy.data.groups[group_name].objects
+                         if o.type == 'ARMATURE']
+        rig_name = rig_list[0] if rig_list else None
+
+        if rig_name:
+            bpy.ops.object.proxy_make(object = rig_name)
+            context.active_object.name = group_name + "_rig"
+
+        return {'FINISHED'}
+
 
 # ======================================================================
 # =========================== User Interface ===========================
@@ -937,7 +998,7 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
 class SCENE_UL_oha_quicklink_blendfiles(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon,
                   active_data, active_propname, index):
-        layout.label(text=item.name)
+        layout.label(text="%s (%s)" % (item.name, os.path.basename(item.file_path)))
 
 class RENDER_MT_oha_qc_presets(bpy.types.Menu):
     '''Presets for final render settings.'''
@@ -1137,10 +1198,14 @@ class SCENE_PT_oha_quicklink(bpy.types.Panel):
         row.operator("scene.oha_quicklink_populate",
                      icon='FILE_REFRESH', text='')
 
-        col = layout.column(align=True)
-        col.template_list("SCENE_UL_oha_quicklink_blendfiles", "",
+        row = layout.row()
+        row.template_list("SCENE_UL_oha_quicklink_blendfiles", "",
                           props, "blend_files", props, "blend_files_index",
-                          rows=5)
+                          rows=10)
+
+        row = row.column()
+        row.operator("scene.oha_quicklink_makeproxy", icon='ZOOMIN', text='')
+
 
 # ======================================================================
 # ========================= Auxiliary Functions ========================
