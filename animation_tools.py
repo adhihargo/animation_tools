@@ -930,6 +930,7 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
                         and os.access(os.path.join(root_folder, f), os.R_OK)]
 
         for folder in folder0_list:
+            self.folder_list.append(folder)
             self.folder_list.extend(
                 [os.path.join(folder, f)
                  for f in os.listdir(folder)
