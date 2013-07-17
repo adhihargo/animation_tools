@@ -914,6 +914,12 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
         return {'FINISHED'}
 
     def execute(self, context):
+        def listdir(directory):
+            return [os.path.join(directory, f)
+                    for f in os.listdir(directory)
+                    if os.path.isdir(os.path.join(directory, f))
+                    and not f.startswith('.')
+                    and os.access(os.path.join(directory, f), os.R_OK)]
         wm = context.window_manager
         props = context.scene.oha_quicklink_props
         root_folder = bpy.path.abspath(props.root_folder)
@@ -924,18 +930,11 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
         props.blend_files.clear()
         self.folder_list.clear()
 
-        folder0_list = [os.path.join(root_folder, f)
-                        for f in os.listdir(root_folder)
-                        if os.path.isdir(os.path.join(root_folder, f))
-                        and os.access(os.path.join(root_folder, f), os.R_OK)]
+        folder0_list = listdir(root_folder)
 
         for folder in folder0_list:
             self.folder_list.append(folder)
-            self.folder_list.extend(
-                [os.path.join(folder, f)
-                 for f in os.listdir(folder)
-                 if os.path.isdir(os.path.join(folder, f))
-                 and os.access(os.path.join(folder, f), os.R_OK)])
+            self.folder_list.extend(listdir(folder))
         self.folder_list.sort()
         
         wm.modal_handler_add(self)
