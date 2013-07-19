@@ -190,18 +190,30 @@ class OHA_QuickLink_BlendFile(bpy.types.PropertyGroup):
         subtype="FILE_PATH",
         options = {'HIDDEN', 'SKIP_SAVE'})
 
-def update_root_folder(self, context):
+def update_oha_quicklink_root_folder(self, context):
     bpy.ops.scene.oha_quicklink_populate('INVOKE_DEFAULT')
+
+def update_oha_quicklink_list_filter(self, context):
+    props = context.scene.oha_quicklink_props
+
+    props.groups_collection.clear()
+    bpy.ops.scene.oha_quicklink_populate()
 
 class OHA_QuickLink_Props(bpy.types.PropertyGroup):
     root_folder = StringProperty(
         name="Root Folder",
         description="Only .blend files two levels below this folder will be listed.",
         subtype="DIR_PATH",
-        update=update_root_folder)
-    blend_files = CollectionProperty(
+        update=update_oha_quicklink_root_folder)
+    list_filter = StringProperty(
+        name="List Filter",
+        description="When not empty, filters the group list.",
+        update=update_oha_quicklink_list_filter
+        )
+    groups = []
+    groups_collection = CollectionProperty(
         type=OHA_QuickLink_BlendFile)
-    blend_files_index = IntProperty(default=0)
+    groups_index = IntProperty(default=0)
 
 # ======================================================================
 # ============================== Operators =============================
@@ -883,6 +895,7 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
     bl_options = {'REGISTER'}
 
     folder_list = []
+    folder_list_index = 0
 
     @classmethod
     def poll(self, context):
@@ -890,30 +903,47 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
 
         return props.root_folder != '' and os.path.exists(props.root_folder)
 
+    def _populate0(self, context):
+        props = context.scene.oha_quicklink_props
+
+        folder = self.folder_list[self.folder_list_index]
+        self.folder_list_index += 1
+        
+        file_list = [os.path.join(folder, f)
+                     for f in os.listdir(folder)
+                     if os.path.isfile(os.path.join(folder, f))
+                     and f.endswith('.blend')]
+        for f in file_list:
+            with bpy.data.libraries.load(f) as (data_from, data_to):
+                for g in data_from.groups:
+                    props.groups.append((g, f))
+
+    def _populate1(self, context):
+        props = context.scene.oha_quicklink_props
+
+        for g, f in props.groups:
+            if props.list_filter.lower() in g.lower():
+                item = props.groups_collection.add()
+                item.name = g
+                item.file_path = f                
+
     def modal(self, context, event):
         props = context.scene.oha_quicklink_props
 
-        if self.folder_list:
-            folder = self.folder_list.pop(0)
-            if not os.access(folder, os.R_OK):
-                return {'PASS_THROUGH'}
-
-            file_list = [os.path.join(folder, f)
-                         for f in os.listdir(folder)
-                         if os.path.isfile(os.path.join(folder, f))
-                         and f.endswith('.blend')]
-            for f in file_list:
-                with bpy.data.libraries.load(f) as (data_from, data_to):
-                    for g in data_from.groups:
-                        item = props.blend_files.add()
-                        item.name = g
-                        item.file_path = f
-
+        if self.folder_list_index < len(self.folder_list):
+            self._populate0(context)
             return {'PASS_THROUGH'}
+
+        self._populate1(context)
 
         return {'FINISHED'}
 
     def execute(self, context):
+        self._populate1(context)
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
         def listdir(directory):
             return [os.path.join(directory, f)
                     for f in os.listdir(directory)
@@ -927,7 +957,7 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
         if not os.access(root_folder, os.R_OK):
             return {'CANCELLED'}
 
-        props.blend_files.clear()
+        props.groups_collection.clear()
         self.folder_list.clear()
 
         folder0_list = listdir(root_folder)
@@ -939,9 +969,6 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
         
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
-
-    def invoke(self, context, event):
-        return self.execute(context)
     
 class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
     """Link selected group into the scene, and create proxy."""
@@ -952,11 +979,11 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         props = context.scene.oha_quicklink_props
-        return len(props.blend_files) > 0
+        return len(props.groups_collection) > 0
 
     def execute(self, context):
         props = context.scene.oha_quicklink_props
-        file_item = props.blend_files[props.blend_files_index]
+        file_item = props.groups_collection[props.groups_index]
 
         group_name = file_item.name
         group_dirname, group_basename = os.path.split(file_item.file_path)
@@ -995,10 +1022,12 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
 # =========================== User Interface ===========================
 # ======================================================================
 
-class SCENE_UL_oha_quicklink_blendfiles(bpy.types.UIList):
+class SCENE_UL_oha_quicklink_groups(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon,
                   active_data, active_propname, index):
-        layout.label(text="%s (%s)" % (item.name, os.path.basename(item.file_path)))
+        props = context.scene.oha_quicklink_props
+        if props.list_filter in item.name+item.file_path:
+            layout.label(text="%s (%s)" % (item.name, os.path.basename(item.file_path)))
 
 class RENDER_MT_oha_qc_presets(bpy.types.Menu):
     '''Presets for final render settings.'''
@@ -1193,17 +1222,20 @@ class SCENE_PT_oha_quicklink(bpy.types.Panel):
         props = scene.oha_quicklink_props
         layout = self.layout
 
-        row = layout.row(align=True)
+        col = layout.column(align=True)
+        row = col.row(align=True)
         row.prop(props, "root_folder", text="")
         row.operator("scene.oha_quicklink_populate",
                      icon='FILE_REFRESH', text='')
+        col.prop(props, "list_filter", text="")
 
-        row = layout.row()
-        row.template_list("SCENE_UL_oha_quicklink_blendfiles", "",
-                          props, "blend_files", props, "blend_files_index",
-                          rows=10)
+        col = layout.row()
+        row = col.column()
+        row.template_list("SCENE_UL_oha_quicklink_groups", "", props,
+                          "groups_collection",
+                          props, "groups_index", rows=10)
 
-        row = row.column()
+        row = col.column()
         row.operator("scene.oha_quicklink_makeproxy", icon='ZOOMIN', text='')
 
 
