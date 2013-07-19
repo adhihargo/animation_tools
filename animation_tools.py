@@ -194,7 +194,7 @@ def update_oha_quicklink_root_folder(self, context):
     bpy.ops.scene.oha_quicklink_populate('INVOKE_DEFAULT')
 
 def update_oha_quicklink_list_filter(self, context):
-    props = context.scene.oha_quicklink_props
+    props = context.scene.oha.quicklink_props
 
     props.groups_collection.clear()
     bpy.ops.scene.oha_quicklink_populate()
@@ -215,6 +215,15 @@ class OHA_QuickLink_Props(bpy.types.PropertyGroup):
         type=OHA_QuickLink_BlendFile)
     groups_index = IntProperty(default=0)
 
+# Outermost property class
+class OHA_Props(bpy.types.PropertyGroup):
+    opengl_props = PointerProperty(
+        type = OHA_RenderOpenGL_Props,
+        options = {'HIDDEN', 'SKIP_SAVE'})
+    quicklink_props = PointerProperty(
+        type = OHA_QuickLink_Props,
+        options = {'HIDDEN', 'SKIP_SAVE'})
+
 # ======================================================================
 # ============================== Operators =============================
 # ======================================================================
@@ -234,7 +243,7 @@ class RENDER_OT_oha_render_opengl_animation(bpy.types.Operator):
         render = scene.render
         image = render.image_settings
         ffmpeg = render.ffmpeg
-        load = scene.oha_opengl_props.load
+        load = scene.oha.opengl_props.load
 
         # Setting render dan FFMPEG menggunakan nilai default yang
         # ditentukan dalam kelas OHA_RenderOpenGL_Props, kecuali yang
@@ -329,7 +338,7 @@ class RENDER_OT_oha_render_opengl_animation_settings(bpy.types.Operator):
     def save_settings(self, context):
         scene = context.scene
         space = context.space_data
-        props = context.scene.oha_opengl_props
+        props = context.scene.oha.opengl_props
         temp = props.temp
 
         if not props.restored:
@@ -352,7 +361,7 @@ class RENDER_OT_oha_render_opengl_animation_settings(bpy.types.Operator):
     def restore_settings(self, context):
         scene = context.scene
         space = context.space_data
-        props = context.scene.oha_opengl_props
+        props = context.scene.oha.opengl_props
         temp = props.temp
 
         if props.restored:
@@ -449,7 +458,7 @@ class RENDER_OT_oha_preview_preset_add(AddPresetBase, bpy.types.Operator):
     preset_subdir = 'oha_preview'
 
     preset_defines = [
-        "load = bpy.context.scene.oha_opengl_props.load"
+        "load = bpy.context.scene.oha.opengl_props.load"
         ]
 
     preset_values = [
@@ -486,7 +495,7 @@ class RENDER_OT_oha_preview_preset_add(AddPresetBase, bpy.types.Operator):
         render = bpy.context.scene.render
         image  = bpy.context.scene.render.image_settings
         ffmpeg = bpy.context.scene.render.ffmpeg
-        load = bpy.context.scene.oha_opengl_props.load
+        load = bpy.context.scene.oha.opengl_props.load
 
         # Resolution_Percentage must stay 100%
         render_keys = render_static_keys - set(['resolution_percentage'])
@@ -899,12 +908,12 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
 
     @classmethod
     def poll(self, context):
-        props = context.scene.oha_quicklink_props
+        props = context.scene.oha.quicklink_props
 
         return props.root_folder != '' and os.path.exists(props.root_folder)
 
     def _populate0(self, context):
-        props = context.scene.oha_quicklink_props
+        props = context.scene.oha.quicklink_props
 
         folder = self.folder_list[self.folder_list_index]
         self.folder_list_index += 1
@@ -913,14 +922,16 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
                      for f in os.listdir(folder)
                      if os.path.isfile(os.path.join(folder, f))
                      and f.endswith('.blend')]
+
         for f in file_list:
             with bpy.data.libraries.load(f) as (data_from, data_to):
                 for g in data_from.groups:
                     props.groups.append((g, f))
 
     def _populate1(self, context):
-        props = context.scene.oha_quicklink_props
+        props = context.scene.oha.quicklink_props
 
+        props.groups_collection.clear()
         for g, f in props.groups:
             if props.list_filter.lower() in g.lower():
                 item = props.groups_collection.add()
@@ -928,7 +939,7 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
                 item.file_path = f                
 
     def modal(self, context, event):
-        props = context.scene.oha_quicklink_props
+        props = context.scene.oha.quicklink_props
 
         if self.folder_list_index < len(self.folder_list):
             self._populate0(context)
@@ -951,13 +962,13 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
                     and not f.startswith('.')
                     and os.access(os.path.join(directory, f), os.R_OK)]
         wm = context.window_manager
-        props = context.scene.oha_quicklink_props
+        props = context.scene.oha.quicklink_props
         root_folder = bpy.path.abspath(props.root_folder)
 
         if not os.access(root_folder, os.R_OK):
             return {'CANCELLED'}
 
-        props.groups_collection.clear()
+        props.groups.clear()
         self.folder_list.clear()
 
         folder0_list = listdir(root_folder)
@@ -978,11 +989,11 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
 
     @classmethod
     def poll(self, context):
-        props = context.scene.oha_quicklink_props
+        props = context.scene.oha.quicklink_props
         return len(props.groups_collection) > 0
 
     def execute(self, context):
-        props = context.scene.oha_quicklink_props
+        props = context.scene.oha.quicklink_props
         file_item = props.groups_collection[props.groups_index]
 
         group_name = file_item.name
@@ -1025,7 +1036,7 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
 class SCENE_UL_oha_quicklink_groups(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon,
                   active_data, active_propname, index):
-        props = context.scene.oha_quicklink_props
+        props = context.scene.oha.quicklink_props
         if props.list_filter in item.name+item.file_path:
             layout.label(text="%s (%s)" % (item.name, os.path.basename(item.file_path)))
 
@@ -1151,8 +1162,8 @@ class RENDER_PT_oha_render_panel(bpy.types.Panel):
         box = layout.box()
         col = box.column_flow(align=True)
         col.label('Preview Settings:')
-        col.prop(context.scene.oha_opengl_props.load, 'render_filepath')
-        col.prop(context.scene.oha_opengl_props.load, 'render_stamp_note_text')
+        col.prop(context.scene.oha.opengl_props.load, 'render_filepath')
+        col.prop(context.scene.oha.opengl_props.load, 'render_stamp_note_text')
 
 class GRAPH_PT_oha_animation_tools(bpy.types.Panel):
     bl_label = 'OHA Animation Tools'
@@ -1219,7 +1230,7 @@ class SCENE_PT_oha_quicklink(bpy.types.Panel):
 
     def draw(self, context):
         scene = context.scene
-        props = scene.oha_quicklink_props
+        props = scene.oha.quicklink_props
         layout = self.layout
 
         col = layout.column(align=True)
@@ -1245,7 +1256,7 @@ class SCENE_PT_oha_quicklink(bpy.types.Panel):
 
 def view3d_header_renderpreview(self, context):
     layout = self.layout
-    props = context.scene.oha_opengl_props
+    props = context.scene.oha.opengl_props
 
     row = layout.row(align=True)
     row.operator('render.oha_opengl', icon='RENDER_ANIMATION', text='Preview')
@@ -1255,18 +1266,14 @@ def view3d_header_renderpreview(self, context):
 def register():
     bpy.utils.register_module(__name__)
     bpy.types.VIEW3D_HT_header.append(view3d_header_renderpreview)
-    bpy.types.Scene.oha_opengl_props = PointerProperty(
-        type = OHA_RenderOpenGL_Props,
-        options = {'HIDDEN', 'SKIP_SAVE'})
-    bpy.types.Scene.oha_quicklink_props = PointerProperty(
-        type = OHA_QuickLink_Props,
+    bpy.types.Scene.oha = PointerProperty(
+        type = OHA_Props,
         options = {'HIDDEN', 'SKIP_SAVE'})
 
 def unregister():
     bpy.utils.unregister_module(__name__)
     bpy.types.VIEW3D_HT_header.remove(view3d_header_renderpreview)
-    del bpy.types.Scene.oha_opengl_props
-    del bpy.types.Scene.oha_quicklink_props
+    del bpy.types.Scene.oha_props
 
 if __name__ == "__main__":
     register()
