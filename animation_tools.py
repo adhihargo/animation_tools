@@ -5,7 +5,9 @@ import bpy
 import getpass
 import os
 import string
+import shelve
 import threading
+from tempfile import gettempdir
 from mathutils import Matrix, Vector
 from bpy.app.handlers import persistent
 from bl_operators.presets import AddPresetBase, ExecutePreset
@@ -223,6 +225,8 @@ class OHA_Props(bpy.types.PropertyGroup):
     quicklink_props = PointerProperty(
         type = OHA_QuickLink_Props,
         options = {'HIDDEN', 'SKIP_SAVE'})
+
+QUICKLINK_CACHE = os.path.join(gettempdir(), "oha_quicklink.cache")
 
 # ======================================================================
 # ============================== Operators =============================
@@ -903,13 +907,16 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
     bl_label = 'Populate Blendfile List'
     bl_options = {'REGISTER'}
 
+    root_folder = ''
     folder_list = []
     folder_list_index = 0
+    cache = {}
+
+    use_cache = BoolProperty(default=True, options={'HIDDEN'})
 
     @classmethod
     def poll(self, context):
         props = context.scene.oha.quicklink_props
-
         return props.root_folder != '' and os.path.exists(props.root_folder)
 
     def _populate0(self, context):
@@ -931,12 +938,15 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
     def _populate1(self, context):
         props = context.scene.oha.quicklink_props
 
+        if self.root_folder in self.cache.keys():
+            props.groups = self.cache[self.root_folder]
+
         props.groups_collection.clear()
         for g, f in props.groups:
             if props.list_filter.lower() in g.lower():
                 item = props.groups_collection.add()
                 item.name = g
-                item.file_path = f                
+                item.file_path = f
 
     def modal(self, context, event):
         props = context.scene.oha.quicklink_props
@@ -945,11 +955,18 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
             self._populate0(context)
             return {'PASS_THROUGH'}
 
+        self.cache[self.root_folder] = props.groups
+        while len(self.cache) > 10:
+            self.cache.pop(list(self.cache.keys())[0])
+        self.cache.sync()
         self._populate1(context)
 
         return {'FINISHED'}
 
     def execute(self, context):
+        props = context.scene.oha.quicklink_props
+        self.root_folder = bpy.path.abspath(props.root_folder)
+        self.cache = shelve.open(QUICKLINK_CACHE)
         self._populate1(context)
 
         return {'FINISHED'}
@@ -963,15 +980,20 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
                     and os.access(os.path.join(directory, f), os.R_OK)]
         wm = context.window_manager
         props = context.scene.oha.quicklink_props
-        root_folder = bpy.path.abspath(props.root_folder)
+        self.root_folder = bpy.path.abspath(props.root_folder)
+        self.cache = shelve.open(QUICKLINK_CACHE)
 
-        if not os.access(root_folder, os.R_OK):
+        if self.use_cache and self.root_folder in self.cache.keys():
+            self._populate1(context)
+            return {'FINISHED'}
+
+        if not os.access(self.root_folder, os.R_OK):
             return {'CANCELLED'}
 
         props.groups.clear()
         self.folder_list.clear()
 
-        folder0_list = listdir(root_folder)
+        folder0_list = listdir(self.root_folder)
 
         for folder in folder0_list:
             self.folder_list.append(folder)
@@ -1236,8 +1258,9 @@ class SCENE_PT_oha_quicklink(bpy.types.Panel):
         col = layout.column(align=True)
         row = col.row(align=True)
         row.prop(props, "root_folder", text="")
-        row.operator("scene.oha_quicklink_populate",
-                     icon='FILE_REFRESH', text='')
+        prop = row.operator("scene.oha_quicklink_populate",
+                            icon='FILE_REFRESH', text='')
+        prop.use_cache = False
         col.prop(props, "list_filter", text="")
 
         col = layout.row()
