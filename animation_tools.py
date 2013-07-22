@@ -943,7 +943,7 @@ class SCENE_OT_oha_quicklink_populate(bpy.types.Operator):
 
         props.groups_collection.clear()
         for g, f in props.groups:
-            if props.list_filter.lower() in g.lower():
+            if props.list_filter.lower() in str.lower(g+f):
                 item = props.groups_collection.add()
                 item.name = g
                 item.file_path = f
@@ -1059,8 +1059,7 @@ class SCENE_UL_oha_quicklink_groups(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon,
                   active_data, active_propname, index):
         props = context.scene.oha.quicklink_props
-        if props.list_filter in item.name+item.file_path:
-            layout.label(text="%s (%s)" % (item.name, os.path.basename(item.file_path)))
+        layout.label(text="%s (%s)" % (item.name, os.path.basename(item.file_path)))
 
 class RENDER_MT_oha_qc_presets(bpy.types.Menu):
     '''Presets for final render settings.'''
