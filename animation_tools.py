@@ -7,7 +7,6 @@ import os
 import string
 import shelve
 import threading
-from tempfile import gettempdir
 from mathutils import Matrix, Vector
 from bpy.app.handlers import persistent
 from bl_operators.presets import AddPresetBase, ExecutePreset
@@ -226,7 +225,8 @@ class OHA_Props(bpy.types.PropertyGroup):
         type = OHA_QuickLink_Props,
         options = {'HIDDEN', 'SKIP_SAVE'})
 
-QUICKLINK_CACHE = os.path.join(gettempdir(), "oha_quicklink.cache")
+QUICKLINK_CACHE = os.path.join(bpy.utils.script_paths(subdir='addons')[-1],
+                               "oha_quicklink_cache")
 
 # ======================================================================
 # ============================== Operators =============================
