@@ -1009,6 +1009,10 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
     bl_label = 'Make Proxy'
     bl_options = {'REGISTER', 'UNDO'}
 
+    group_name = StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
+    file_path = StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
+    make_proxy = BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE'})
+
     @classmethod
     def poll(self, context):
         props = context.scene.oha.quicklink_props
@@ -1018,17 +1022,17 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
         props = context.scene.oha.quicklink_props
         file_item = props.groups_collection[props.groups_index]
 
-        group_name = file_item.name
-        group_dirname, group_basename = os.path.split(file_item.file_path)
+        group_name = file_item.name if self.group_name == ''\
+            else self.group_name
+        group_dirname, group_basename = os.path.split(
+            file_item.file_path if self.file_path == ''\
+                else self.file_path)
 
         gd = dict(fullpath = file_item.file_path, basepath = group_basename,
                   group = group_name, sep = os.sep)
 
         group_fpath = "%(fullpath)s%(sep)sGroup%(sep)s%(group)s" % gd
         group_dpath = "%(fullpath)s%(sep)sGroup%(sep)s" % gd
-
-        # with bpy.data.libraries.load(group_file) as (data_from, data_to):
-        #     data_to.groups = [group_name]
 
         bpy.ops.wm.link_append(
             filepath=group_fpath,
@@ -1041,7 +1045,7 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
             instance_groups=True,
             relative_path=True)
         rig_list = [o.name for o in bpy.data.groups[group_name].objects
-                         if o.type == 'ARMATURE']
+                    if o.type == 'ARMATURE']
         rig_name = rig_list[0] if rig_list else None
 
         if rig_name:
@@ -1050,6 +1054,44 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
 
         return {'FINISHED'}
 
+class SCENE_OT_oha_reinstance_broken_links(bpy.types.Operator):
+    """Attempt to reinstance missing groups caused by broken file links."""
+    bl_idname = 'scene.oha_reinstance_broken_links'
+    bl_label = 'Reinstance Broken Links'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        props = scene.oha.quicklink_props
+
+        empty_objects = [o for o in scene.objects
+                         if o.type == 'EMPTY' and o.dupli_group == None]
+
+        if not empty_objects:
+            return {'CANCELLED'}
+
+        for empty in empty_objects:
+            matching_groups = [(g, f) for (g, f) in props.groups
+                               if empty.name.startswith(g)]
+            if not matching_groups:
+                continue
+
+            name_empty = empty.name
+            matrix_empty = empty.matrix_world
+
+            g, f = matching_groups[0]
+            bpy.ops.scene.oha_quicklink_makeproxy(group_name=g, file_path=f,
+                                                  make_proxy=False)
+
+            new_empty = context.active_object
+            new_empty.matrix_world = matrix_empty
+            new_empty.name = name_empty
+            new_empty.name = name_empty # Bump original object's name
+
+            scene.objects.unlink(empty)
+
+        return {'FINISHED'}
+            
 
 # ======================================================================
 # =========================== User Interface ===========================
@@ -1268,8 +1310,10 @@ class SCENE_PT_oha_quicklink(bpy.types.Panel):
                           "groups_collection",
                           props, "groups_index", rows=10)
 
-        row = col.column()
+        row = col.column(align=True)
         row.operator("scene.oha_quicklink_makeproxy", icon='ZOOMIN', text='')
+        row.operator("scene.oha_reinstance_broken_links",
+                     icon='MODIFIER', text='')
 
 
 # ======================================================================
