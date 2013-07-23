@@ -1051,6 +1051,7 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
         if rig_name:
             bpy.ops.object.proxy_make(object = rig_name)
             context.active_object.name = group_name + "_rig"
+            bpy.ops.object.posemode_toggle()
 
         return {'FINISHED'}
 
