@@ -1054,10 +1054,10 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
 
         return {'FINISHED'}
 
-class SCENE_OT_oha_reinstance_broken_links(bpy.types.Operator):
+class SCENE_OT_oha_reinstance_missing_groups(bpy.types.Operator):
     """Attempt to reinstance missing groups caused by broken file links."""
-    bl_idname = 'scene.oha_reinstance_broken_links'
-    bl_label = 'Reinstance Broken Links'
+    bl_idname = 'scene.oha_reinstance_missing_groups'
+    bl_label = 'Reinstance Missing Groups'
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -1312,7 +1312,7 @@ class SCENE_PT_oha_quicklink(bpy.types.Panel):
 
         row = col.column(align=True)
         row.operator("scene.oha_quicklink_makeproxy", icon='ZOOMIN', text='')
-        row.operator("scene.oha_reinstance_broken_links",
+        row.operator("scene.oha_reinstance_missing_groups",
                      icon='MODIFIER', text='')
 
 
