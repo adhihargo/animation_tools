@@ -1011,6 +1011,7 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
 
     group_name = StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
     file_path = StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
+    make_instance = BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE'})
     make_proxy = BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE'})
 
     @classmethod
@@ -1042,8 +1043,12 @@ class SCENE_OT_oha_quicklink_makeproxy(bpy.types.Operator):
             link=True,
             autoselect=False,
             active_layer=True,
-            instance_groups=True,
+            instance_groups=self.make_instance,
             relative_path=True)
+
+        if not (self.make_instance and self.make_proxy):
+            return {'FINISHED'}
+
         rig_list = [o.name for o in bpy.data.groups[group_name].objects
                     if o.type == 'ARMATURE']
         rig_name = rig_list[0] if rig_list else None
@@ -1312,7 +1317,11 @@ class SCENE_PT_oha_quicklink(bpy.types.Panel):
                           props, "groups_index", rows=10)
 
         row = col.column(align=True)
-        row.operator("scene.oha_quicklink_makeproxy", icon='ZOOMIN', text='')
+        row.operator("scene.oha_quicklink_makeproxy", icon='ZOOM_IN', text='')
+        row.operator("scene.oha_quicklink_makeproxy", icon='VIEWZOOM', text='').make_instance = False
+        row.operator("scene.oha_quicklink_makeproxy", icon='ZOOM_PREVIOUS', text='').make_proxy = False
+
+        row.separator()
         row.operator("scene.oha_reinstance_missing_groups",
                      icon='MODIFIER', text='')
 
